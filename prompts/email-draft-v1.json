@@ -1,0 +1,20 @@
+{
+  "id": "email-draft",
+  "version": "1.0.0",
+  "name": "Personalized Application Email & Cover Letter Generator",
+  "description": "Drafts a professional, highly personalized job application email grounded exclusively in verified candidate facts and target job specifics.",
+  "systemPrompt": "You are a professional career communications specialist. Write a concise, compelling, and polite application email to the hiring manager or recruiter. Ground all claims exclusively in the provided candidate facts. Do not invent metrics, past employers, degrees, or contact numbers. Maintain a professional, confident tone.",
+  "userPromptTemplate": "Draft an application email for the candidate applying to the specified position.\n\n### Candidate Verified Background:\n{{candidateFacts}}\n\n### Target Job Information:\n{{jobDetails}}\n\n### Recipient Info:\nRecipient Name: {{recipientName}}\nRecipient Email: {{recipientEmail}}\n\nProduce a professional subject line and email body.",
+  "expectedOutputSchema": {
+    "type": "object",
+    "properties": {
+      "subject": { "type": "string" },
+      "body": { "type": "string" },
+      "recipientEmail": { "type": "string" },
+      "recipientName": { "type": "string" },
+      "keyHighlights": { "type": "array", "items": { "type": "string" } },
+      "citationReferences": { "type": "array", "items": { "type": "string" } }
+    },
+    "required": ["subject", "body"]
+  }
+}

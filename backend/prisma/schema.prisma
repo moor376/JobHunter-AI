@@ -1,0 +1,428 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ConsentStatus {
+  PENDING
+  GRANTED
+  REVOKED
+}
+
+enum ResumeParseStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum ResumeSource {
+  USER_UPLOAD
+  IMPORT
+  MANUAL_ENTRY
+}
+
+enum JobSourceType {
+  OFFICIAL_API
+  JOB_BOARD
+  RSS_FEED
+  CAREERS_PAGE
+  MANUAL
+}
+
+enum JobSourceAccessMethod {
+  API
+  FEED
+  PUBLIC_PAGE
+  MANUAL
+}
+
+enum JobSourceHealthStatus {
+  UNKNOWN
+  HEALTHY
+  DEGRADED
+  DISABLED
+}
+
+enum JobStatus {
+  ACTIVE
+  CLOSED
+  ARCHIVED
+}
+
+enum EmploymentType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+  TEMPORARY
+  INTERNSHIP
+  FREELANCE
+  OTHER
+}
+
+enum ApplicationStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  SENDING
+  SENT
+  FAILED
+  WITHDRAWN
+  REPLIED
+}
+
+enum ApplicationChannel {
+  EMAIL
+  EXTERNAL_PORTAL
+  MANUAL
+}
+
+enum EmailReviewStatus {
+  DRAFT
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+}
+
+enum EmailProvider {
+  GMAIL
+  OUTLOOK
+  OTHER
+}
+
+enum EmailAccountStatus {
+  ACTIVE
+  REVOKED
+  EXPIRED
+  DISABLED
+}
+
+enum EmailEventType {
+  DRAFT_CREATED
+  APPROVED
+  SEND_ATTEMPTED
+  SENT
+  FAILED
+  DELIVERED
+  BOUNCED
+  REPLIED
+}
+
+enum AIAnalysisType {
+  RESUME_PARSE
+  JOB_NORMALIZATION
+  JOB_MATCH
+  EMAIL_DRAFT
+}
+
+enum AIAnalysisStatus {
+  PENDING
+  VALIDATED
+  REJECTED
+  FAILED
+}
+
+enum ReviewDecision {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum AuditActorType {
+  SYSTEM
+  CANDIDATE
+  USER
+  PROVIDER
+}
+
+model Candidate {
+  id               String        @id @default(uuid()) @db.Uuid
+  email            String        @unique
+  firstName        String
+  lastName         String
+  phone            String?
+  location         String?
+  profileSummary   String?
+  targetRoles      String[]      @default([])
+  consentStatus    ConsentStatus @default(PENDING)
+  consentGrantedAt DateTime?
+  isActive         Boolean       @default(true)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  resumes       Resume[]
+  applications  Application[]
+  emailAccounts EmailAccount[]
+  aiAnalyses    AIAnalysis[]
+  auditLogs     AuditLog[]
+
+  @@index([isActive, createdAt])
+  @@map("candidates")
+}
+
+model Resume {
+  id                 String            @id @default(uuid()) @db.Uuid
+  candidateId        String            @db.Uuid
+  version            Int
+  privateStorageKey  String
+  checksum           String
+  originalFilename   String?
+  source             ResumeSource      @default(USER_UPLOAD)
+  parseStatus        ResumeParseStatus @default(PENDING)
+  parsedData         Json?
+  sourceMetadata     Json?
+  parsedAt           DateTime?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  candidate       Candidate        @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  applications    Application[]
+  aiAnalyses      AIAnalysis[]
+  generatedEmails GeneratedEmail[] @relation("AttachmentResume")
+
+  @@unique([candidateId, version])
+  @@unique([candidateId, checksum])
+  @@index([candidateId, parseStatus])
+  @@index([createdAt])
+  @@map("resumes")
+}
+
+model Company {
+  id             String   @id @default(uuid()) @db.Uuid
+  name           String
+  normalizedName String
+  websiteUrl     String?
+  domain         String?
+  location       String?
+  metadata       Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  jobs Job[]
+
+  @@unique([normalizedName, domain])
+  @@index([location])
+  @@map("companies")
+}
+
+model JobSource {
+  id                 String                @id @default(uuid()) @db.Uuid
+  name               String                @unique
+  type               JobSourceType
+  accessMethod       JobSourceAccessMethod
+  externalSourceId   String?
+  baseUrl            String?
+  rateLimitPerMinute Int?
+  healthStatus       JobSourceHealthStatus @default(UNKNOWN)
+  isActive           Boolean               @default(true)
+  policyMetadata     Json?
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+
+  jobs Job[]
+
+  @@unique([type, externalSourceId])
+  @@index([isActive, healthStatus])
+  @@map("job_sources")
+}
+
+model Job {
+  id                   String         @id @default(uuid()) @db.Uuid
+  companyId            String         @db.Uuid
+  jobSourceId          String         @db.Uuid
+  title                String
+  description          String
+  location             String?
+  employmentType       EmploymentType?
+  sourceUrl            String?
+  externalJobId        String?
+  canonicalUrl         String?
+  contentHash          String?
+  status               JobStatus      @default(ACTIVE)
+  postedAt             DateTime?
+  seenAt               DateTime       @default(now())
+  rawReferenceMetadata Json?
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+
+  company      Company     @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  jobSource    JobSource   @relation(fields: [jobSourceId], references: [id], onDelete: Restrict)
+  applications Application[]
+  aiAnalyses   AIAnalysis[]
+
+  @@unique([jobSourceId, externalJobId])
+  @@unique([jobSourceId, canonicalUrl])
+  @@index([status, seenAt])
+  @@index([jobSourceId, status])
+  @@index([companyId, status])
+  @@index([location])
+  @@index([postedAt])
+  @@map("jobs")
+}
+
+model Application {
+  id                       String            @id @default(uuid()) @db.Uuid
+  candidateId              String            @db.Uuid
+  jobId                    String            @db.Uuid
+  resumeId                 String?           @db.Uuid
+  resumeVersion            Int?
+  status                   ApplicationStatus @default(DRAFT)
+  channel                  ApplicationChannel @default(EMAIL)
+  duplicateKey             String            @unique
+  selectedGeneratedEmailId String?           @unique @db.Uuid
+  approvedAt               DateTime?
+  sentAt                   DateTime?
+  statusChangedAt          DateTime          @default(now())
+  version                  Int               @default(1)
+  createdAt                DateTime          @default(now())
+  updatedAt                DateTime          @updatedAt
+
+  candidate              Candidate       @relation(fields: [candidateId], references: [id], onDelete: Restrict)
+  job                    Job             @relation(fields: [jobId], references: [id], onDelete: Restrict)
+  resume                 Resume?         @relation(fields: [resumeId], references: [id], onDelete: SetNull)
+  generatedEmails        GeneratedEmail[] @relation("ApplicationGeneratedEmails")
+  selectedGeneratedEmail GeneratedEmail? @relation("SelectedGeneratedEmail", fields: [selectedGeneratedEmailId], references: [id], onDelete: SetNull)
+  emailEvents            EmailEvent[]
+
+  @@unique([candidateId, jobId, channel])
+  @@index([candidateId, status])
+  @@index([status, sentAt])
+  @@index([jobId])
+  @@map("applications")
+}
+
+model GeneratedEmail {
+  id                    String            @id @default(uuid()) @db.Uuid
+  applicationId         String            @db.Uuid
+  attachmentResumeId    String?           @db.Uuid
+  aiAnalysisId          String?           @db.Uuid
+  subject               String
+  body                  String
+  recipientEmail        String
+  recipientName         String?
+  promptVersion         String?
+  reviewStatus          EmailReviewStatus @default(DRAFT)
+  contentHash           String
+  generationProvenance  Json?
+  reviewedAt            DateTime?
+  approvedAt            DateTime?
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  application           Application  @relation("ApplicationGeneratedEmails", fields: [applicationId], references: [id], onDelete: Cascade)
+  attachmentResume      Resume?      @relation("AttachmentResume", fields: [attachmentResumeId], references: [id], onDelete: SetNull)
+  aiAnalysis            AIAnalysis?  @relation(fields: [aiAnalysisId], references: [id], onDelete: SetNull)
+  selectedByApplication Application? @relation("SelectedGeneratedEmail")
+  emailEvents           EmailEvent[]
+
+  @@unique([applicationId, contentHash])
+  @@index([applicationId, reviewStatus])
+  @@map("generated_emails")
+}
+
+model EmailAccount {
+  id                   String             @id @default(uuid()) @db.Uuid
+  candidateId          String             @db.Uuid
+  provider             EmailProvider
+  emailAddress         String
+  /// Reference to a managed encrypted secret; plaintext OAuth tokens are never stored.
+  tokenSecretReference String?
+  scopes               String[]           @default([])
+  tokenExpiresAt       DateTime?
+  status               EmailAccountStatus @default(ACTIVE)
+  consentGrantedAt     DateTime?
+  lastUsedAt           DateTime?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  candidate   Candidate   @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  emailEvents EmailEvent[]
+
+  @@unique([candidateId, provider, emailAddress])
+  @@index([status])
+  @@map("email_accounts")
+}
+
+model EmailEvent {
+  id                String         @id @default(uuid()) @db.Uuid
+  applicationId     String         @db.Uuid
+  emailAccountId    String?        @db.Uuid
+  generatedEmailId  String?        @db.Uuid
+  type              EmailEventType
+  providerMessageId String?
+  providerThreadId  String?
+  errorCode         String?
+  safeMetadata      Json?
+  occurredAt        DateTime       @default(now())
+  createdAt         DateTime       @default(now())
+
+  application    Application     @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  emailAccount   EmailAccount?   @relation(fields: [emailAccountId], references: [id], onDelete: SetNull)
+  generatedEmail GeneratedEmail? @relation(fields: [generatedEmailId], references: [id], onDelete: SetNull)
+
+  @@unique([emailAccountId, providerMessageId])
+  @@index([applicationId, occurredAt])
+  @@index([type, occurredAt])
+  @@index([providerThreadId])
+  @@map("email_events")
+}
+
+model AIAnalysis {
+  id                  String           @id @default(uuid()) @db.Uuid
+  candidateId         String?          @db.Uuid
+  resumeId            String?          @db.Uuid
+  jobId               String?          @db.Uuid
+  analysisType        AIAnalysisType
+  status              AIAnalysisStatus @default(PENDING)
+  reviewDecision      ReviewDecision   @default(PENDING)
+  modelProvider       String?
+  modelName           String?
+  promptVersion       String?
+  inputRecordVersions Json?
+  structuredResult    Json?
+  explanation         Json?
+  matchScore          Float?
+  reviewedAt          DateTime?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  candidate       Candidate?      @relation(fields: [candidateId], references: [id], onDelete: SetNull)
+  resume          Resume?         @relation(fields: [resumeId], references: [id], onDelete: SetNull)
+  job             Job?            @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  generatedEmails GeneratedEmail[]
+
+  @@index([candidateId, analysisType])
+  @@index([resumeId])
+  @@index([jobId, analysisType])
+  @@index([status, createdAt])
+  @@map("ai_analyses")
+}
+
+model AuditLog {
+  id            String         @id @default(uuid()) @db.Uuid
+  candidateId   String?        @db.Uuid
+  actorType     AuditActorType
+  actorId       String?
+  action        String
+  resourceType  String
+  resourceId    String?
+  eventType     String
+  correlationId String
+  safeMetadata  Json?
+  beforeSummary Json?
+  afterSummary  Json?
+  occurredAt    DateTime       @default(now())
+  createdAt     DateTime       @default(now())
+
+  candidate Candidate? @relation(fields: [candidateId], references: [id], onDelete: SetNull)
+
+  @@index([candidateId, occurredAt])
+  @@index([resourceType, resourceId])
+  @@index([correlationId])
+  @@index([action, occurredAt])
+  @@map("audit_logs")
+}

@@ -1,0 +1,36 @@
+{
+  "name": "jobhunter-ai-backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Phase 1 backend foundation for JobHunter-AI.",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "test": "vitest run",
+    "prisma:generate": "prisma generate",
+    "prisma:validate": "prisma validate"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.0.0",
+    "@types/pdf-parse": "^1.1.5",
+    "dotenv": "^16.6.1",
+    "embedded-postgres": "^18.4.0-beta.17",
+    "express": "^5.1.0",
+    "mammoth": "^1.12.1",
+    "pdf-parse": "^2.4.5",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.1",
+    "@types/node": "^22.15.3",
+    "prisma": "^6.0.0",
+    "tsx": "^4.20.3",
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.1"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "id": "job-match",
+  "version": "1.0.0",
+  "name": "Job/CV Match and Compatibility Evaluator",
+  "description": "Evaluates candidate CV facts against a job vacancy to compute calibrated match score, matched skills, missing requirements, and explainable recommendations.",
+  "systemPrompt": "You are a specialized AI evaluator for recruitment. Compare the candidate's verified background and skills against the job requirements. Provide an objective, calibrated compatibility assessment. Distinguish between verified evidence in the candidate profile and missing or unverified requirements. Do not invent candidate qualifications.",
+  "userPromptTemplate": "Assess compatibility between the candidate profile and the target job opportunity.\n\n### Candidate Profile & Experience:\n{{candidateFacts}}\n\n### Job Opportunity Details:\n{{jobDetails}}\n\nProvide an objective match score (0-100), categorization (STRONG_MATCH, POTENTIAL_MATCH, LOW_MATCH), matched skills, missing requirements, and a concise explanation.",
+  "expectedOutputSchema": {
+    "type": "object",
+    "properties": {
+      "matchScore": { "type": "number", "minimum": 0, "maximum": 100 },
+      "category": { "type": "string", "enum": ["STRONG_MATCH", "POTENTIAL_MATCH", "LOW_MATCH"] },
+      "matchedSkills": { "type": "array", "items": { "type": "string" } },
+      "missingSkills": { "type": "array", "items": { "type": "string" } },
+      "experienceRelevance": { "type": "string" },
+      "strengths": { "type": "array", "items": { "type": "string" } },
+      "gaps": { "type": "array", "items": { "type": "string" } },
+      "reasoning": { "type": "string" }
+    },
+    "required": ["matchScore", "category", "matchedSkills", "missingSkills", "reasoning"]
+  }
+}

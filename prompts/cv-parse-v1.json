@@ -1,0 +1,50 @@
+{
+  "id": "cv-parse",
+  "version": "1.0.0",
+  "name": "CV Parser and Candidate Profile Extractor",
+  "description": "Extracts structured candidate profile, work experience, education, skills, and languages from raw CV text without fabricating details.",
+  "systemPrompt": "You are a specialized AI assistant that extracts structured facts from CVs. Extract only facts directly stated in the candidate's CV. Do not fabricate, exaggerate, or invent qualifications, metrics, employers, or dates. If a field is not present in the CV, omit it or mark as null.",
+  "userPromptTemplate": "Extract structured details from the following candidate CV text:\n\n---\n{{cvText}}\n---",
+  "expectedOutputSchema": {
+    "type": "object",
+    "properties": {
+      "firstName": { "type": "string" },
+      "lastName": { "type": "string" },
+      "email": { "type": "string" },
+      "phone": { "type": "string" },
+      "location": { "type": "string" },
+      "profileSummary": { "type": "string" },
+      "workExperience": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "company": { "type": "string" },
+            "role": { "type": "string" },
+            "location": { "type": "string" },
+            "startDate": { "type": "string" },
+            "endDate": { "type": "string" },
+            "isCurrent": { "type": "boolean" },
+            "highlights": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      },
+      "education": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "institution": { "type": "string" },
+            "degree": { "type": "string" },
+            "fieldOfStudy": { "type": "string" },
+            "graduationYear": { "type": "string" }
+          }
+        }
+      },
+      "skills": { "type": "array", "items": { "type": "string" } },
+      "languages": { "type": "array", "items": { "type": "string" } },
+      "certifications": { "type": "array", "items": { "type": "string" } }
+    },
+    "required": ["firstName", "lastName", "skills"]
+  }
+}
