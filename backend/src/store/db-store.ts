@@ -21,7 +21,6 @@ import {
 import { randomUUID } from "node:crypto";
 import { prisma } from "../config/prisma.js";
 import { logError } from "../utils/logger.js";
-import { ensureDatabaseRunning } from "../config/database-manager.js";
 
 export {
   ConsentStatus,
@@ -634,6 +633,11 @@ export async function isDbConnected(): Promise<boolean> {
 export function resetDbConnectedCache(): void {
   cachedDbConnected = null;
   lastDbCheckTime = 0;
+}
+
+export function setDbConnected(status: boolean): void {
+  cachedDbConnected = status;
+  lastDbCheckTime = Date.now();
 }
 
 export async function seedDatabaseIfEmpty(): Promise<void> {

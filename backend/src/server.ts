@@ -20,15 +20,14 @@ console.info(
 );
 
 // Ensure persistent PostgreSQL is running and connected
-void ensureDatabaseRunning().then((dbOk) => {
-  console.info(
-    JSON.stringify({
-      event: "database_initialized",
-      connected: dbOk,
-      target: startupReport.database.type,
-    }),
-  );
-});
+const dbOk = await ensureDatabaseRunning();
+console.info(
+  JSON.stringify({
+    event: "database_initialized",
+    connected: dbOk,
+    target: startupReport.database.type,
+  }),
+);
 
 const server = app.listen(environment.PORT, environment.HOST, () => {
   console.info(
