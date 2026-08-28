@@ -1,4 +1,4 @@
-﻿import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { NAYERA_VERIFIED_FACTS, evaluateCandidateEligibility } from "../src/services/eligibility-service.js";
 import { RuleBasedAIProvider } from "../src/services/ai/ai-provider.js";
 import { memoryStore } from "../src/store/db-store.js";

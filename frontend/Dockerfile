@@ -1,4 +1,4 @@
-﻿# Multi-stage production Dockerfile for JobHunter-AI Next.js Frontend
+# Multi-stage production Dockerfile for JobHunter-AI Next.js Frontend
 FROM node:22-alpine AS builder
 
 WORKDIR /app

@@ -1,4 +1,4 @@
-﻿import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { ensureDatabaseRunning, seedPostgresIfEmpty } from "../src/config/database-manager.js";
 import { prisma } from "../src/config/prisma.js";
 import { isDbConnected, setDbConnected, resetDbConnectedCache } from "../src/store/db-store.js";

@@ -1,4 +1,4 @@
-﻿import { loadEnvironment, validateStartupConfiguration } from "../config/env.js";
+import { loadEnvironment, validateStartupConfiguration } from "../config/env.js";
 import { listJobSources } from "../services/job-source-service.js";
 import { ingestJobsFromSource, listJobs } from "../services/job-service.js";
 import { listCandidates } from "../services/candidate-service.js";

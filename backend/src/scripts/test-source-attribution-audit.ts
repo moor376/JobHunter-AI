@@ -1,4 +1,4 @@
-﻿import { loadEnvironment } from "../config/env.js";
+import { loadEnvironment } from "../config/env.js";
 import { listJobs, ingestJobsFromSource } from "../services/job-service.js";
 import { listJobSources } from "../services/job-source-service.js";
 import { listCandidates } from "../services/candidate-service.js";

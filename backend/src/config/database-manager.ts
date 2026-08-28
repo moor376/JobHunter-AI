@@ -1,4 +1,4 @@
-﻿import path from "node:path";
+import path from "node:path";
 import fs from "node:fs";
 import net from "node:net";
 import { prisma } from "./prisma.js";

@@ -1,4 +1,4 @@
-﻿async function verify() {
+async function verify() {
   console.log("Testing live server endpoints...");
   
   // 1. Root / route

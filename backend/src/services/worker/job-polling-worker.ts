@@ -1,4 +1,4 @@
-﻿import { randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { loadEnvironment } from "../../config/env.js";
 import { prisma } from "../../config/prisma.js";
 import {

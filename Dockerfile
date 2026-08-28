@@ -1,4 +1,4 @@
-﻿# Multi-stage production build for JobHunter-AI (Unified Frontend + Backend)
+# Multi-stage production build for JobHunter-AI (Unified Frontend + Backend)
 
 # Stage 1: Build Frontend Next.js Static Export
 FROM node:22-alpine AS frontend-builder
