@@ -1,4 +1,4 @@
-﻿# Multi-stage production Dockerfile for JobHunter-AI Backend
+# Multi-stage production Dockerfile for JobHunter-AI Backend
 FROM node:22-alpine AS builder
 
 WORKDIR /app
@@ -27,6 +27,7 @@ COPY prisma ./prisma/
 RUN npm ci --omit=dev && npx prisma generate
 
 COPY --from=builder /app/dist ./dist
+COPY public ./public
 
 EXPOSE 3000
 

@@ -1,0 +1,17 @@
+﻿{
+  "name": "jobhunter-ai",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "JobHunter-AI - Autonomous Reviewable & Auditable Job Search Workspace",
+  "scripts": {
+    "postinstall": "npm --prefix frontend install && npm --prefix backend install",
+    "build:frontend": "npm --prefix frontend run build",
+    "build:backend": "npm --prefix backend run build",
+    "build": "npm run build:frontend && npm run build:backend && node scripts/copy-frontend.js",
+    "start": "node backend/dist/server.js",
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "test": "npm --prefix backend test"
+  }
+}
