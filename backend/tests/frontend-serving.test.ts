@@ -1,4 +1,4 @@
-﻿import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
 import { createApp } from "../src/app.js";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -36,14 +36,18 @@ describe("Unified Frontend Serving & Production Routing Suite", () => {
     expect(html).toContain("<!DOCTYPE html>");
   });
 
-  it("serves index.html for non-API client routes to support SPA navigation", async () => {
+  it("serves index.html for multiple client routes to support SPA navigation", async () => {
     const baseUrl = await startApp();
-    const response = await fetch(`${baseUrl}/dashboard`);
-    const html = await response.text();
+    const routes = ["/dashboard", "/overview", "/review", "/jobs", "/candidate"];
 
-    expect(response.status).toBe(200);
-    expect(response.headers.get("content-type")).toContain("text/html");
-    expect(html).toContain("JobHunter-AI");
+    for (const route of routes) {
+      const response = await fetch(`${baseUrl}${route}`);
+      const html = await response.text();
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-type")).toContain("text/html");
+      expect(html).toContain("JobHunter-AI");
+    }
   });
 
   it("preserves /api/health and all backend API endpoints", async () => {
@@ -55,6 +59,11 @@ describe("Unified Frontend Serving & Production Routing Suite", () => {
     expect(json.data.service).toBe("jobhunter-ai-backend");
     expect(json.data.status).toBeDefined();
     expect(response.headers.get("x-request-id")).toBeTruthy();
+
+    const candResponse = await fetch(`${baseUrl}/api/candidates`);
+    const candJson = (await candResponse.json()) as any;
+    expect(candResponse.status).toBe(200);
+    expect(Array.isArray(candJson.data)).toBe(true);
   });
 
   it("returns JSON 404 for unknown /api/* routes instead of serving HTML", async () => {

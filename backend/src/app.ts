@@ -1,5 +1,6 @@
 import path from "node:path";
 import fs from "node:fs";
+import { fileURLToPath } from "node:url";
 import express, { type Express } from "express";
 
 import { corsMiddleware } from "./middleware/cors.js";
@@ -11,13 +12,21 @@ import { rateLimiter } from "./middleware/rate-limiter.js";
 import { requestIdMiddleware } from "./middleware/request-id.js";
 import { apiRouter } from "./routes/api-routes.js";
 
+const currentDir = path.dirname(fileURLToPath(import.meta.url));
+
 function getStaticDir(): string | null {
   const possiblePaths = [
     path.resolve(process.cwd(), "public"),
+    path.resolve(process.cwd(), "backend/public"),
     path.resolve(process.cwd(), "dist/public"),
     path.resolve(process.cwd(), "../frontend/out"),
     path.resolve(process.cwd(), "frontend/out"),
     path.resolve(process.cwd(), "../public"),
+    path.resolve(currentDir, "../public"),
+    path.resolve(currentDir, "../../public"),
+    path.resolve(currentDir, "../../../public"),
+    path.resolve(currentDir, "../../frontend/out"),
+    path.resolve(currentDir, "../../../frontend/out"),
   ];
 
   for (const p of possiblePaths) {
