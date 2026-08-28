@@ -239,6 +239,50 @@ export async function seedPostgresIfEmpty(): Promise<void> {
           update: {},
         });
       }
+
+      for (const comp of memoryStore.companies.values()) {
+        await prisma.company.upsert({
+          where: { id: comp.id },
+          create: {
+            id: comp.id,
+            name: comp.name,
+            normalizedName: comp.normalizedName,
+            websiteUrl: comp.websiteUrl,
+            domain: comp.domain,
+            location: comp.location,
+            metadata: comp.metadata,
+            createdAt: comp.createdAt,
+            updatedAt: comp.updatedAt,
+          },
+          update: {},
+        });
+      }
+
+      for (const j of memoryStore.jobs.values()) {
+        await prisma.job.upsert({
+          where: { id: j.id },
+          create: {
+            id: j.id,
+            companyId: j.companyId,
+            jobSourceId: j.jobSourceId,
+            title: j.title,
+            description: j.description,
+            location: j.location,
+            employmentType: j.employmentType,
+            sourceUrl: j.sourceUrl,
+            externalJobId: j.externalJobId,
+            canonicalUrl: j.canonicalUrl,
+            contentHash: j.contentHash,
+            status: j.status,
+            postedAt: j.postedAt,
+            seenAt: j.seenAt,
+            rawReferenceMetadata: j.rawReferenceMetadata,
+            createdAt: j.createdAt,
+            updatedAt: j.updatedAt,
+          },
+          update: {},
+        });
+      }
     }
   } catch (err: any) {
     // Non-fatal if seeding is already satisfied or fails gracefully

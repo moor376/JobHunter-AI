@@ -10,9 +10,10 @@ const srcDir = path.resolve(rootDir, "frontend/out");
 const destDir = path.resolve(rootDir, "backend/public");
 
 if (fs.existsSync(srcDir)) {
-  if (!fs.existsSync(destDir)) {
-    fs.mkdirSync(destDir, { recursive: true });
+  if (fs.existsSync(destDir)) {
+    fs.rmSync(destDir, { recursive: true, force: true });
   }
+  fs.mkdirSync(destDir, { recursive: true });
   fs.cpSync(srcDir, destDir, { recursive: true, force: true });
   console.log(`✓ Copied frontend build from ${srcDir} to ${destDir}`);
 } else {

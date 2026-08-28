@@ -577,24 +577,83 @@ export default function JobHunterDashboard() {
   }, [jobs]);
 
   // =========================================================================
+  // Unified API Request Helper with Real Error Propagation
+  // =========================================================================
+  async function apiCall<T = any>(
+    url: string,
+    options: RequestInit = {}
+  ): Promise<{ ok: boolean; status: number; data?: T; message?: string; error?: string; errorCode?: string }> {
+    try {
+      const res = await fetch(url, {
+        ...options,
+        headers: {
+          "Content-Type": "application/json",
+          ...(options.headers || {}),
+        },
+      });
+
+      let json: any = null;
+      try {
+        json = await res.json();
+      } catch {
+        const text = await res.text().catch(() => "");
+        return {
+          ok: false,
+          status: res.status,
+          error: text ? `Server error (${res.status}): ${text.slice(0, 150)}` : `Server returned HTTP ${res.status}`,
+        };
+      }
+
+      if (res.ok) {
+        return {
+          ok: true,
+          status: res.status,
+          data: json?.data,
+          message: json?.message,
+        };
+      }
+
+      const errorMessage =
+        json?.error?.message ||
+        json?.message ||
+        (Array.isArray(json?.error?.details) ? json.error.details.map((d: any) => `${d.path}: ${d.message}`).join(", ") : null) ||
+        json?.error ||
+        `Request failed with HTTP status ${res.status}`;
+
+      return {
+        ok: false,
+        status: res.status,
+        error: typeof errorMessage === "string" ? errorMessage : JSON.stringify(errorMessage),
+        errorCode: json?.error?.code,
+        data: json?.data,
+      };
+    } catch (err: any) {
+      return {
+        ok: false,
+        status: 0,
+        error: err?.message || "Network request failed. Please check your connection.",
+      };
+    }
+  }
+
+  // =========================================================================
   // ACTIONS: Autonomous Control & Human Approval Workflow
   // =========================================================================
 
   const handleConfigureWorker = async (updatedConfig: any) => {
     try {
       setActionLoading("configWorker");
-      const res = await fetch(`${API_BASE}/worker/configure`, {
+      const res = await apiCall(`${API_BASE}/worker/configure`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updatedConfig),
       });
-      const data = await res.json();
       if (res.ok) {
-        setWorkerStatus(data.data);
-        notify("Autonomous Job Hunter configuration updated.");
+        setWorkerStatus(res.data);
+        notify(res.message || "Autonomous Job Hunter configuration updated.");
+      } else {
+        notify(`Failed to update worker config: ${res.error}`);
+        setErrorMessage(res.error || "Configuration error");
       }
-    } catch {
-      notify("Failed to update worker configuration.");
     } finally {
       setActionLoading(null);
     }
@@ -610,25 +669,22 @@ export default function JobHunterDashboard() {
 
     try {
       setActionLoading(`approve_${application.id}`);
-      const res = await fetch(`${API_BASE}/email/reviews/${application.selectedGeneratedEmailId}`, {
+      const res = await apiCall(`${API_BASE}/email/reviews/${application.selectedGeneratedEmailId}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           decision: "APPROVED",
           notes: notes.trim() || "Verified and approved personalized email draft.",
         }),
       });
 
-      const data = await res.json();
       if (res.ok) {
         notify("✓ Draft email approved! Application is now in APPROVED state and eligible for sending.");
         setApprovalModal(null);
         await fetchData();
       } else {
-        notify(data.error?.message || "Approval action failed.");
+        notify(`Approval rejected: ${res.error}`);
+        setErrorMessage(res.error || "Approval failed");
       }
-    } catch {
-      notify("Failed to execute approval.");
     } finally {
       setActionLoading(null);
     }
@@ -644,25 +700,22 @@ export default function JobHunterDashboard() {
 
     try {
       setActionLoading(`reject_${application.id}`);
-      const res = await fetch(`${API_BASE}/email/reviews/${application.selectedGeneratedEmailId}`, {
+      const res = await apiCall(`${API_BASE}/email/reviews/${application.selectedGeneratedEmailId}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           decision: "REJECTED",
           notes: notes.trim() || "Draft rejected during review.",
         }),
       });
 
-      const data = await res.json();
       if (res.ok) {
         notify("✕ Draft rejected and application status reset to DRAFT.");
         setApprovalModal(null);
         await fetchData();
       } else {
-        notify(data.error?.message || "Rejection action failed.");
+        notify(`Rejection failed: ${res.error}`);
+        setErrorMessage(res.error || "Rejection failed");
       }
-    } catch {
-      notify("Failed to execute rejection.");
     } finally {
       setActionLoading(null);
     }
@@ -681,17 +734,17 @@ export default function JobHunterDashboard() {
     try {
       setActionLoading(`send_${application.id}`);
       notify("Dispatching email through Delivery Gate...");
-      const res = await fetch(`${API_BASE}/applications/${application.id}/send`, {
+      const res = await apiCall(`${API_BASE}/applications/${application.id}/send`, {
         method: "POST",
       });
 
-      const data = await res.json();
       if (res.ok) {
         notify("🚀 Application email successfully sent to employer!");
         setApprovalModal(null);
         await fetchData();
       } else {
-        notify(data.error?.message || "Delivery gate blocked email dispatch.");
+        notify(`Delivery gate blocked email dispatch: ${res.error}`);
+        setErrorMessage(res.error || "Email dispatch failed");
       }
     } finally {
       setActionLoading(null);
@@ -702,18 +755,17 @@ export default function JobHunterDashboard() {
     try {
       setActionLoading(`prep_approve_${id}`);
       notify("🔍 Verifying live job posting freshness before approval...");
-      const res = await fetch(`${API_BASE}/applications/prepared/${id}/approve`, {
+      const res = await apiCall(`${API_BASE}/applications/prepared/${id}/approve`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ forceApprove: true }),
       });
-      const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error?.message || "Approval blocked by Freshness Verification Gate.");
+        notify(`Approval blocked: ${res.error}`);
+        setErrorMessage(res.error || "Freshness Verification Gate blocked approval.");
+        await fetchData();
+        return;
       }
       notify("✓ Application package approved! (Stored as APPROVED — No automatic email or dispatch)");
-      await fetchData();
-    } catch (err: any) {
-      setErrorMessage(err.message || "Failed to approve application package.");
       await fetchData();
     } finally {
       setActionLoading(null);
@@ -724,18 +776,16 @@ export default function JobHunterDashboard() {
     try {
       setActionLoading(`verify_fresh_${id}`);
       notify("🔍 Fetching live job URL with 10s timeout to verify freshness...");
-      const res = await fetch(`${API_BASE}/applications/prepared/${id}/verify-freshness`, {
+      const res = await apiCall(`${API_BASE}/applications/prepared/${id}/verify-freshness`, {
         method: "POST",
       });
-      const data = await res.json();
       if (res.ok) {
-        notify(`Job Freshness: ${data.data?.freshnessStatus} — ${data.data?.freshnessReason || "Checked"}`);
+        notify(`Job Freshness: ${res.data?.freshnessStatus} — ${res.data?.freshnessReason || "Checked"}`);
         await fetchData();
       } else {
-        notify(data.error?.message || "Freshness check failed.");
+        notify(`Freshness check failed: ${res.error}`);
+        setErrorMessage(res.error || "Freshness check failed");
       }
-    } catch {
-      notify("Freshness check request failed.");
     } finally {
       setActionLoading(null);
     }
@@ -745,18 +795,16 @@ export default function JobHunterDashboard() {
     try {
       setIsPreparingBatch(true);
       notify("🔍 Running 10-second freshness verification across all prepared vacancies...");
-      const res = await fetch(`${API_BASE}/applications/prepared/verify-all-freshness`, {
+      const res = await apiCall(`${API_BASE}/applications/prepared/verify-all-freshness`, {
         method: "POST",
       });
-      const data = await res.json();
       if (res.ok) {
-        notify(data.message || "All job vacancies verified for freshness!");
+        notify(res.message || "All job vacancies verified for freshness!");
         await fetchData();
       } else {
-        notify(data.error?.message || "Batch freshness verification failed.");
+        notify(`Batch freshness verification failed: ${res.error}`);
+        setErrorMessage(res.error || "Batch freshness verification failed");
       }
-    } catch {
-      notify("Batch freshness request failed.");
     } finally {
       setIsPreparingBatch(false);
     }
@@ -765,16 +813,17 @@ export default function JobHunterDashboard() {
   const handleRejectPrepared = async (id: string) => {
     try {
       setActionLoading(`prep_reject_${id}`);
-      const res = await fetch(`${API_BASE}/applications/prepared/${id}/reject`, {
+      const res = await apiCall(`${API_BASE}/applications/prepared/${id}/reject`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reason: "User dismissed in Preparation Queue" }),
       });
-      if (!res.ok) throw new Error("Rejection failed.");
+      if (!res.ok) {
+        notify(`Rejection failed: ${res.error}`);
+        setErrorMessage(res.error || "Failed to reject application package.");
+        return;
+      }
       notify("✕ Application package rejected.");
       await fetchData();
-    } catch (err: any) {
-      setErrorMessage(err.message || "Failed to reject application package.");
     } finally {
       setActionLoading(null);
     }
@@ -784,20 +833,17 @@ export default function JobHunterDashboard() {
     try {
       setIsPreparingBatch(true);
       notify("⚡ Preparing application packages for all HIGH_PRIORITY & GOOD_MATCH jobs...");
-      const res = await fetch(`${API_BASE}/applications/prepare-all`, {
+      const res = await apiCall(`${API_BASE}/applications/prepare-all`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ candidateId: currentCandidate?.id }),
       });
-      const data = await res.json();
       if (res.ok) {
-        notify(`⚡ Successfully prepared ${data.data?.totalPrepared || 0} application packages for Nayera!`);
+        notify(`⚡ Successfully prepared ${res.data?.totalPrepared || 0} application packages for Nayera!`);
         await fetchData();
       } else {
-        notify(data.error?.message || "Batch preparation failed.");
+        notify(`Batch preparation failed: ${res.error}`);
+        setErrorMessage(res.error || "Batch preparation failed");
       }
-    } catch {
-      notify("Preparation request failed.");
     } finally {
       setIsPreparingBatch(false);
     }
@@ -807,16 +853,14 @@ export default function JobHunterDashboard() {
     try {
       setActionLoading("worker");
       notify("⚡ Polling real job sources (Jooble, Adzuna, RSS) & running candidate match...");
-      const res = await fetch(`${API_BASE}/worker/run`, { method: "POST" });
-      const data = await res.json();
+      const res = await apiCall(`${API_BASE}/worker/run`, { method: "POST" });
       if (res.ok) {
-        notify(data.message || "Autonomous cycle completed!");
+        notify(res.message || "Autonomous cycle completed!");
         await fetchData();
       } else {
-        notify(data.error?.message || "Worker run encountered an issue.");
+        notify(`Worker run notice: ${res.error}`);
+        setErrorMessage(res.error || "Worker run failed");
       }
-    } catch {
-      notify("Worker execution failed.");
     } finally {
       setActionLoading(null);
     }
@@ -825,31 +869,35 @@ export default function JobHunterDashboard() {
   const handleToggleWorker = async (enable: boolean) => {
     try {
       const endpoint = enable ? `${API_BASE}/worker/enable` : `${API_BASE}/worker/disable`;
-      const res = await fetch(endpoint, { method: "POST" });
-      const data = await res.json();
+      const res = await apiCall(endpoint, { method: "POST" });
       if (res.ok) {
-        notify(data.message);
+        notify(res.message || (enable ? "Worker enabled" : "Worker disabled"));
         fetchData();
+      } else {
+        notify(`Failed to toggle worker schedule: ${res.error}`);
+        setErrorMessage(res.error || "Failed to toggle worker schedule");
       }
-    } catch {
-      notify("Failed to toggle worker schedule.");
+    } catch (err: any) {
+      notify(`Failed to toggle worker schedule: ${err.message}`);
     }
   };
 
   const handleUpdateConsent = async (status: "GRANTED" | "PENDING" | "REVOKED") => {
     if (!currentCandidate) return;
     try {
-      const res = await fetch(`${API_BASE}/candidates/${currentCandidate.id}/consent`, {
+      const res = await apiCall(`${API_BASE}/candidates/${currentCandidate.id}/consent`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ consentStatus: status }),
       });
       if (res.ok) {
         notify(`Candidate consent status updated to ${status}`);
         fetchData();
+      } else {
+        notify(`Failed to update candidate consent: ${res.error}`);
+        setErrorMessage(res.error || "Consent update failed");
       }
-    } catch {
-      notify("Failed to update candidate consent.");
+    } catch (err: any) {
+      notify(`Failed to update candidate consent: ${err.message}`);
     }
   };
 
@@ -892,22 +940,19 @@ export default function JobHunterDashboard() {
             source: "USER_UPLOAD",
           };
 
-      const res = await fetch(`${API_BASE}/candidates/${currentCandidate.id}/resumes`, {
+      const res = await apiCall(`${API_BASE}/candidates/${currentCandidate.id}/resumes`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const data = await res.json();
       if (res.ok) {
-        notify(`CV version ${data.data.version} parsed successfully!`);
+        notify(`CV version ${res.data?.version} parsed successfully!`);
         setSelectedFile(null);
         setCustomCvText("");
         fetchData();
       } else {
-        notify(data.error?.message || "Failed to upload CV");
+        notify(`Failed to upload CV: ${res.error}`);
+        setErrorMessage(res.error || "CV upload failed");
       }
-    } catch {
-      notify("CV upload failed");
     } finally {
       setActionLoading(null);
     }
@@ -918,26 +963,29 @@ export default function JobHunterDashboard() {
     try {
       setActionLoading(`apply_${jobId}`);
       notify("Creating application and drafting personalized email...");
-      const res = await fetch(`${API_BASE}/applications`, {
+      const res = await apiCall(`${API_BASE}/applications`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           candidateId: currentCandidate.id,
           jobId,
           channel: "EMAIL",
         }),
       });
-      const data = await res.json();
       if (res.ok) {
         notify("Application initiated! Opening Review Gate...");
         await fetchData();
-        setSelectedAppId(data.data.id);
+        if (res.data?.id) setSelectedAppId(res.data.id);
+        setActiveTab("review");
+      } else if (res.errorCode === "DUPLICATE_APPLICATION" || res.status === 409) {
+        notify("An application already exists for this position. Switched to review dossier.");
+        await fetchData();
+        const existing = applications.find((a) => a.jobId === jobId);
+        if (existing) setSelectedAppId(existing.id);
         setActiveTab("review");
       } else {
-        notify(data.error?.message || "Failed to create application");
+        notify(`Failed to create application: ${res.error}`);
+        setErrorMessage(res.error || "Failed to create application");
       }
-    } catch {
-      notify("Application creation failed");
     } finally {
       setActionLoading(null);
     }
@@ -948,19 +996,18 @@ export default function JobHunterDashboard() {
     try {
       setActionLoading(`match_${jobId}`);
       notify("Evaluating job compatibility with AI matcher...");
-      const res = await fetch(`${API_BASE}/jobs/${jobId}/match`, {
+      const res = await apiCall(`${API_BASE}/jobs/${jobId}/match`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ candidateId: currentCandidate.id }),
       });
       if (res.ok) {
-        const data = await res.json();
-        setMatchResult(data.data.match);
+        setMatchResult(res.data?.match);
         setActiveTab("matcher");
         notify("Compatibility assessment complete!");
+      } else {
+        notify(`Match evaluation failed: ${res.error}`);
+        setErrorMessage(res.error || "Match evaluation failed");
       }
-    } catch {
-      notify("Match evaluation failed");
     } finally {
       setActionLoading(null);
     }

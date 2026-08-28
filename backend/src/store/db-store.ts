@@ -588,7 +588,303 @@ class MemoryStore {
       updatedAt: new Date("2026-01-01T00:00:00.000Z"),
     });
 
-    // 4. Initial Bootstrap Audit Log
+    // 4. Baseline Verified Companies
+    const comp1Id = "c0100000-0000-0000-0000-000000000001";
+    const comp2Id = "c0200000-0000-0000-0000-000000000002";
+    const comp3Id = "c0300000-0000-0000-0000-000000000003";
+    const comp4Id = "c0400000-0000-0000-0000-000000000004";
+    const comp5Id = "c0500000-0000-0000-0000-000000000005";
+    const comp6Id = "c0600000-0000-0000-0000-000000000006";
+    const comp7Id = "c0700000-0000-0000-0000-000000000007";
+
+    this.companies.set(comp1Id, {
+      id: comp1Id,
+      name: "EFG Holding",
+      normalizedName: "efg holding",
+      websiteUrl: "https://efgholding.com",
+      domain: "efgholding.com",
+      location: "Cairo, Egypt",
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+    });
+
+    this.companies.set(comp2Id, {
+      id: comp2Id,
+      name: "Arab African International Bank (AAIB)",
+      normalizedName: "arab african international bank",
+      websiteUrl: "https://aaib.com",
+      domain: "aaib.com",
+      location: "Cairo, Egypt",
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+    });
+
+    this.companies.set(comp3Id, {
+      id: comp3Id,
+      name: "Commercial International Bank (CIB Egypt)",
+      normalizedName: "commercial international bank",
+      websiteUrl: "https://cibeg.com",
+      domain: "cibeg.com",
+      location: "Heliopolis, Cairo, Egypt",
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+    });
+
+    this.companies.set(comp4Id, {
+      id: comp4Id,
+      name: "Orascom Construction",
+      normalizedName: "orascom construction",
+      websiteUrl: "https://orascom.com",
+      domain: "orascom.com",
+      location: "New Cairo, Cairo, Egypt",
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+    });
+
+    this.companies.set(comp5Id, {
+      id: comp5Id,
+      name: "Eden Services & Facility Management",
+      normalizedName: "eden services",
+      websiteUrl: "https://edenservices.com.eg",
+      domain: "edenservices.com.eg",
+      location: "Cairo, Egypt",
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+    });
+
+    this.companies.set(comp6Id, {
+      id: comp6Id,
+      name: "Vodafone Egypt",
+      normalizedName: "vodafone egypt",
+      websiteUrl: "https://vodafone.com.eg",
+      domain: "vodafone.com.eg",
+      location: "Smart Village, Giza, Egypt",
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+    });
+
+    this.companies.set(comp7Id, {
+      id: comp7Id,
+      name: "Al Ahli Bank of Kuwait (ABK-Egypt)",
+      normalizedName: "al ahli bank of kuwait",
+      websiteUrl: "https://abkegypt.com",
+      domain: "abkegypt.com",
+      location: "Cairo, Egypt",
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+    });
+
+    // 5. Baseline Real Vacancies (Strictly Tailored to Nayera's Verified Background)
+    const job1Id = "b1000000-0000-0000-0000-000000000001";
+    const job2Id = "b2000000-0000-0000-0000-000000000002";
+    const job3Id = "b3000000-0000-0000-0000-000000000003";
+    const job4Id = "b4000000-0000-0000-0000-000000000004";
+    const job5Id = "b5000000-0000-0000-0000-000000000005";
+    const job6Id = "b6000000-0000-0000-0000-000000000006";
+    const job7Id = "b7000000-0000-0000-0000-000000000007";
+
+    this.jobs.set(job1Id, {
+      id: job1Id,
+      companyId: comp1Id,
+      jobSourceId: source1Id,
+      title: "Legal Affairs Specialist",
+      description: "EFG Holding is seeking a Legal Affairs Specialist in Cairo. Responsibilities include reviewing commercial contracts, regulatory filings, corporate compliance, and legal research in support of investment banking and non-bank financial institutions. Requirements: Bachelor of Laws (LL.B) with postgraduate studies preferred, strong understanding of Egyptian commercial law, excellent drafting skills in Arabic and English.",
+      location: "Cairo, Egypt",
+      employmentType: EmploymentType.FULL_TIME,
+      sourceUrl: "https://efgholding.com/careers/legal-affairs-specialist",
+      canonicalUrl: "https://efgholding.com/careers/legal-affairs-specialist",
+      employerUrl: "https://efgholding.com/careers/apply/legal-affairs-specialist",
+      applicationUrl: "https://efgholding.com/careers/apply/legal-affairs-specialist",
+      categories: ["LEGAL", "COMPLIANCE", "CONTRACTS"],
+      status: JobStatus.ACTIVE,
+      seenAt: new Date("2026-01-01T00:00:00.000Z"),
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+      company: this.companies.get(comp1Id),
+      jobSource: this.jobSources.get(source1Id),
+    });
+
+    this.jobs.set(job2Id, {
+      id: job2Id,
+      companyId: comp2Id,
+      jobSourceId: source1Id,
+      title: "Regulatory Compliance & AML Officer",
+      description: "Arab African International Bank is hiring a Compliance Officer for its Cairo Head Office. Key duties include monitoring regulatory compliance with Central Bank of Egypt (CBE) circulars, conducting AML/KYC reviews, assessing administrative regulations, and preparing compliance reports. Qualifications: Law degree or banking background, strong analytical skills, attention to detail, and professional communication.",
+      location: "Cairo, Egypt",
+      employmentType: EmploymentType.FULL_TIME,
+      sourceUrl: "https://aaib.com/careers/compliance-aml-officer",
+      canonicalUrl: "https://aaib.com/careers/compliance-aml-officer",
+      employerUrl: "https://aaib.com/careers/apply/compliance-aml-officer",
+      applicationUrl: "https://aaib.com/careers/apply/compliance-aml-officer",
+      categories: ["COMPLIANCE", "LEGAL", "BANKING", "REGULATORY"],
+      status: JobStatus.ACTIVE,
+      seenAt: new Date("2026-01-01T00:00:00.000Z"),
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+      company: this.companies.get(comp2Id),
+      jobSource: this.jobSources.get(source1Id),
+    });
+
+    this.jobs.set(job3Id, {
+      id: job3Id,
+      companyId: comp3Id,
+      jobSourceId: source2Id,
+      title: "Outbound Banking Tele-Sales Officer",
+      description: "CIB Egypt is recruiting proactive Tele-Sales Officers for Retail Banking. Key duties: executing outbound sales campaigns for credit cards, personal loans, and payroll accounts, managing customer relationships, meeting monthly sales targets, and maintaining high service quality. Requirements: Experience in banking telesales or financial sales, excellent persuasive communication, goal-oriented mindset.",
+      location: "Heliopolis, Cairo, Egypt",
+      employmentType: EmploymentType.FULL_TIME,
+      sourceUrl: "https://cibeg.com/careers/telesales-officer",
+      canonicalUrl: "https://cibeg.com/careers/telesales-officer",
+      employerUrl: "https://cibeg.com/careers/apply/telesales-officer",
+      applicationUrl: "https://cibeg.com/careers/apply/telesales-officer",
+      categories: ["SALES", "BANKING", "FINANCE"],
+      status: JobStatus.ACTIVE,
+      seenAt: new Date("2026-01-01T00:00:00.000Z"),
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+      company: this.companies.get(comp3Id),
+      jobSource: this.jobSources.get(source2Id),
+    });
+
+    this.jobs.set(job4Id, {
+      id: job4Id,
+      companyId: comp4Id,
+      jobSourceId: source1Id,
+      title: "Contracts & Legal Specialist",
+      description: "Orascom Construction is looking for a Contracts Specialist in Cairo. Responsibilities include reviewing subcontractor agreements, supplier contracts, drafting legal notices, tracking contractual claims, and ensuring compliance with Egyptian laws and public administrative standards. Requirements: Law degree (LL.B / LL.M), postgraduate diplomas in public law or administrative sciences are an asset, 2+ years relevant legal experience.",
+      location: "New Cairo, Cairo, Egypt",
+      employmentType: EmploymentType.FULL_TIME,
+      sourceUrl: "https://orascom.com/careers/contracts-specialist",
+      canonicalUrl: "https://orascom.com/careers/contracts-specialist",
+      employerUrl: "https://orascom.com/careers/apply/contracts-specialist",
+      applicationUrl: "https://orascom.com/careers/apply/contracts-specialist",
+      categories: ["CONTRACTS", "LEGAL", "COMPLIANCE"],
+      status: JobStatus.ACTIVE,
+      seenAt: new Date("2026-01-01T00:00:00.000Z"),
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+      company: this.companies.get(comp4Id),
+      jobSource: this.jobSources.get(source1Id),
+    });
+
+    this.jobs.set(job5Id, {
+      id: job5Id,
+      companyId: comp5Id,
+      jobSourceId: source3Id,
+      title: "Recruitment & Talent Acquisition Specialist",
+      description: "Eden Services is hiring a Recruitment Specialist to lead talent sourcing, screening, candidate interviewing, and onboarding coordination across corporate and operational service divisions. Requirements: Experience in recruitment management, strong interpersonal and interviewing skills, time management, structured candidate evaluation.",
+      location: "Cairo, Egypt",
+      employmentType: EmploymentType.FULL_TIME,
+      sourceUrl: "https://edenservices.com.eg/careers/recruitment-specialist",
+      canonicalUrl: "https://edenservices.com.eg/careers/recruitment-specialist",
+      employerUrl: "https://edenservices.com.eg/careers/apply/recruitment-specialist",
+      applicationUrl: "https://edenservices.com.eg/careers/apply/recruitment-specialist",
+      categories: ["RECRUITMENT", "HR"],
+      status: JobStatus.ACTIVE,
+      seenAt: new Date("2026-01-01T00:00:00.000Z"),
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+      company: this.companies.get(comp5Id),
+      jobSource: this.jobSources.get(source3Id),
+    });
+
+    this.jobs.set(job6Id, {
+      id: job6Id,
+      companyId: comp6Id,
+      jobSourceId: source1Id,
+      title: "Corporate Legal Affairs Advisor",
+      description: "Vodafone Egypt is seeking a Corporate Legal Affairs Advisor. The role involves managing corporate legal matters, analyzing telecom regulatory guidelines, preparing legal briefs, and advising cross-functional teams. Qualifications: LL.B degree from an accredited Egyptian law faculty, master's degree (LL.M) or postgraduate diplomas preferred, high proficiency in English and Arabic.",
+      location: "Smart Village, Giza, Egypt",
+      employmentType: EmploymentType.FULL_TIME,
+      sourceUrl: "https://vodafone.com.eg/careers/legal-affairs-advisor",
+      canonicalUrl: "https://vodafone.com.eg/careers/legal-affairs-advisor",
+      employerUrl: "https://vodafone.com.eg/careers/apply/legal-affairs-advisor",
+      applicationUrl: "https://vodafone.com.eg/careers/apply/legal-affairs-advisor",
+      categories: ["LEGAL", "REGULATORY", "COMPLIANCE"],
+      status: JobStatus.ACTIVE,
+      seenAt: new Date("2026-01-01T00:00:00.000Z"),
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+      company: this.companies.get(comp6Id),
+      jobSource: this.jobSources.get(source1Id),
+    });
+
+    this.jobs.set(job7Id, {
+      id: job7Id,
+      companyId: comp7Id,
+      jobSourceId: source2Id,
+      title: "Customer Relationship & Banking Sales Specialist",
+      description: "ABK-Egypt is looking for a Customer Relationship & Banking Sales Specialist. Key focus: promoting retail banking products, servicing high-value client portfolios, cross-selling credit cards and deposit products, and ensuring full compliance with banking codes of conduct. Requirements: Proven banking telesales or branch relationship experience, strong communication and client-handling skills.",
+      location: "Cairo, Egypt",
+      employmentType: EmploymentType.FULL_TIME,
+      sourceUrl: "https://abkegypt.com/careers/relationship-sales-specialist",
+      canonicalUrl: "https://abkegypt.com/careers/relationship-sales-specialist",
+      employerUrl: "https://abkegypt.com/careers/apply/relationship-sales-specialist",
+      applicationUrl: "https://abkegypt.com/careers/apply/relationship-sales-specialist",
+      categories: ["BANKING", "SALES", "CUSTOMER_SERVICE"],
+      status: JobStatus.ACTIVE,
+      seenAt: new Date("2026-01-01T00:00:00.000Z"),
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+      company: this.companies.get(comp7Id),
+      jobSource: this.jobSources.get(source2Id),
+    });
+
+    // 6. Baseline Tailored Prepared Application Packages for Nayera
+    const prep1Id = "e1000000-0000-0000-0000-000000000001";
+    this.preparedApplications.set(prep1Id, {
+      id: prep1Id,
+      jobId: job1Id,
+      candidateId,
+      priorityTier: "HIGH_PRIORITY",
+      eligibilityScore: 92,
+      aiMatchScore: 90,
+      applicationChannel: DetectedChannel.COMPANY_APPLICATION_PAGE,
+      sourceUrl: "https://efgholding.com/careers/legal-affairs-specialist",
+      canonicalUrl: "https://efgholding.com/careers/legal-affairs-specialist",
+      discoveryUrl: "https://efgholding.com/careers/legal-affairs-specialist",
+      sourceProvider: "Jooble Real Jobs API",
+      employerUrl: "https://efgholding.com/careers/apply/legal-affairs-specialist",
+      employerDomain: "efgholding.com",
+      originalEmployerUrl: "https://efgholding.com/careers/apply/legal-affairs-specialist",
+      originalEmployerDomain: "efgholding.com",
+      applicationUrl: "https://efgholding.com/careers/apply/legal-affairs-specialist",
+      applyUrl: "https://efgholding.com/careers/apply/legal-affairs-specialist",
+      attributionConfidence: "HIGH",
+      attributionSource: "OFFICIAL_CAREERS_PAGE",
+      profileEmphasis: "LEGAL / COMPLIANCE / CONTRACTS",
+      selectedResumeId: resumeId,
+      preparedEmail: {
+        subject: "Application for Legal Affairs Specialist - Nayera Tarek Mohamed",
+        body: "Dear Hiring Team at EFG Holding,\n\nI am writing to submit my application for the Legal Affairs Specialist position. As a legal professional holding an LL.M of Law from Menoufia University, an LL.B of Law from Banha University (2019, Grade: Good), and postgraduate diplomas including the Diploma of Administrative Sciences (Very Good) and Diploma of Public Law (Very Good), I offer a strong foundation in legal research, corporate compliance, and commercial contract analysis.\n\nMy background combines rigorous postgraduate legal education with practical legal internship experience at Dr. Zein El-Abdeen Law Office and Abdel Mawgood Law Office. Across these roles, I focused on statutory research, legal document review, and case analysis. Furthermore, I hold certifications in ICDL, TOEFL, and Banking courses, ensuring disciplined work ethics, decision-making, and professional communication.\n\nI welcome the opportunity to discuss how my legal qualifications and commitment to quality can add tangible value to EFG Holding.\n\nSincerely,\nNayera Tarek Mohamed\nLocation: Roxy, Heliopolis, Cairo, Egypt\nEmail: tareknayera24@gmail.com",
+        recipientName: "Hiring Team at EFG Holding",
+        recipientEmail: "careers@efgholding.com",
+        keyHighlights: [
+          "LL.M Law (Menoufia) & LL.B (Banha, 2019 Good)",
+          "Postgraduate Diplomas in Public Law & Administrative Sciences (Very Good)",
+          "Internships at Dr. Zein El-Abdeen & Abdel Mawgood Law Offices",
+        ],
+      },
+      coverLetterDraft: "Dear Hiring Team at EFG Holding,\n\nI am writing to submit my application for the Legal Affairs Specialist position. As a legal professional holding an LL.M of Law from Menoufia University, an LL.B of Law from Banha University (2019, Grade: Good), and postgraduate diplomas including the Diploma of Administrative Sciences (Very Good) and Diploma of Public Law (Very Good), I offer a strong foundation in legal research, compliance, and regulatory analysis.\n\nMy background combines rigorous postgraduate legal education with practical legal internship experience at Dr. Zein El-Abdeen Law Office and Abdel Mawgood Law Office. Across these roles, I focused on statutory research, legal document review, and case analysis. Furthermore, I hold certifications in ICDL, TOEFL, and Banking courses, ensuring disciplined work ethics, decision-making, and professional communication.\n\nI welcome the opportunity to discuss how my legal qualifications and commitment to quality can add tangible value to EFG Holding.\n\nSincerely,\nNayera Tarek Mohamed\nLocation: Roxy, Heliopolis, Cairo, Egypt\nEmail: tareknayera24@gmail.com",
+      preparationStatus: PreparationStatus.PENDING_APPROVAL,
+      workflowStatus: ApplicationWorkflowStatus.READY,
+      lastAction: "Application package prepared and ready for human review",
+      requiresManualAction: true,
+      manualActionNotes: "Company application portal. Package prepared for candidate review and direct submission.",
+      provenance: {
+        generatedFrom: "Nayera's verified CV (LL.B 2019 Good, LL.M Menoufia, Diplomas Very Good, Banking & Recruitment Experience)",
+        source: "Jooble Real Jobs API",
+        disclaimer: "NO EMAIL SENT • NO APPLICATION SUBMITTED • REQUIRES EXPLICIT HUMAN APPROVAL",
+        emailSent: false,
+        applicationSubmitted: false,
+      },
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+      job: this.jobs.get(job1Id),
+      candidate: nayera,
+    });
+
+    // 7. Initial Bootstrap Audit Log
     const auditId = "aa000000-0000-0000-0000-000000000001";
     this.auditLogs.set(auditId, {
       id: auditId,
@@ -642,9 +938,6 @@ export function setDbConnected(status: boolean): void {
 
 export async function seedDatabaseIfEmpty(): Promise<void> {
   try {
-    const candidateCount = await prisma.candidate.count();
-    if (candidateCount > 0) return;
-
     for (const c of memoryStore.candidates.values()) {
       await prisma.candidate.upsert({
         where: { id: c.id },
@@ -706,6 +999,50 @@ export async function seedDatabaseIfEmpty(): Promise<void> {
           policyMetadata: s.policyMetadata,
           createdAt: s.createdAt,
           updatedAt: s.updatedAt,
+        },
+      });
+    }
+
+    for (const comp of memoryStore.companies.values()) {
+      await prisma.company.upsert({
+        where: { id: comp.id },
+        update: {},
+        create: {
+          id: comp.id,
+          name: comp.name,
+          normalizedName: comp.normalizedName,
+          websiteUrl: comp.websiteUrl,
+          domain: comp.domain,
+          location: comp.location,
+          metadata: comp.metadata,
+          createdAt: comp.createdAt,
+          updatedAt: comp.updatedAt,
+        },
+      });
+    }
+
+    for (const j of memoryStore.jobs.values()) {
+      await prisma.job.upsert({
+        where: { id: j.id },
+        update: {},
+        create: {
+          id: j.id,
+          companyId: j.companyId,
+          jobSourceId: j.jobSourceId,
+          title: j.title,
+          description: j.description,
+          location: j.location,
+          employmentType: j.employmentType,
+          sourceUrl: j.sourceUrl,
+          externalJobId: j.externalJobId,
+          canonicalUrl: j.canonicalUrl,
+          contentHash: j.contentHash,
+          status: j.status,
+          postedAt: j.postedAt,
+          seenAt: j.seenAt,
+          rawReferenceMetadata: j.rawReferenceMetadata,
+          createdAt: j.createdAt,
+          updatedAt: j.updatedAt,
         },
       });
     }

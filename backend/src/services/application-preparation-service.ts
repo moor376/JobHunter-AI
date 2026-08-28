@@ -545,11 +545,11 @@ export async function getPreparedApplicationById(id: string): Promise<PreparedAp
  */
 export async function approvePreparedApplication(
   id: string,
-  options?: { skipFreshnessCheck?: boolean },
+  options?: { skipFreshnessCheck?: boolean; forceApprove?: boolean },
 ): Promise<PreparedApplicationRecord> {
   let prep = await getPreparedApplicationById(id);
 
-  if (!options?.skipFreshnessCheck) {
+  if (!options?.skipFreshnessCheck && !options?.forceApprove) {
     prep = await verifyApplicationFreshness(id);
     if (prep.freshnessStatus !== FreshnessStatus.ACTIVE) {
       const status = prep.freshnessStatus || "UNKNOWN";
