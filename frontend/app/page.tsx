@@ -2,7 +2,15 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "/api";
+function getApiBase(): string {
+  if (typeof window !== "undefined") {
+    // When accessing frontend via dev server on port 3001/3002, route API calls to backend on port 3000
+    if (window.location.port === "3001" || window.location.port === "3002") {
+      return "http://localhost:3000/api";
+    }
+  }
+  return process.env.NEXT_PUBLIC_API_BASE_URL || "/api";
+}
 
 type TabKey = "overview" | "review" | "jobs" | "sent" | "candidate" | "matcher" | "pipeline" | "audit";
 
@@ -267,20 +275,34 @@ export default function JobHunterDashboard() {
     return candidates.find((c) => c.id === activeCandidateId) || candidates[0] || null;
   }, [candidates, activeCandidateId]);
 
+  const API_BASE = getApiBase();
+
   // Load All Primary Data
   const fetchData = async () => {
     try {
       setErrorMessage(null);
-      const [candRes, jobsRes, rankedRes, sourcesRes, appsRes, prepRes, logsRes, workerRes] = await Promise.all([
-        fetch(`${API_BASE}/candidates`).catch(() => null),
-        fetch(`${API_BASE}/jobs`).catch(() => null),
-        fetch(`${API_BASE}/jobs/ranked`).catch(() => null),
-        fetch(`${API_BASE}/job-sources`).catch(() => null),
-        fetch(`${API_BASE}/applications`).catch(() => null),
-        fetch(`${API_BASE}/applications/prepared`).catch(() => null),
-        fetch(`${API_BASE}/audit-logs`).catch(() => null),
-        fetch(`${API_BASE}/worker/status`).catch(() => null),
+      const api = getApiBase();
+      const [sumRes, candRes, jobsRes, rankedRes, sourcesRes, appsRes, prepRes, logsRes, workerRes] = await Promise.all([
+        fetch(`${api}/dashboard/summary`).catch(() => null),
+        fetch(`${api}/candidates`).catch(() => null),
+        fetch(`${api}/jobs`).catch(() => null),
+        fetch(`${api}/jobs/ranked`).catch(() => null),
+        fetch(`${api}/job-sources`).catch(() => null),
+        fetch(`${api}/applications`).catch(() => null),
+        fetch(`${api}/applications/prepared`).catch(() => null),
+        fetch(`${api}/audit-logs`).catch(() => null),
+        fetch(`${api}/worker/status`).catch(() => null),
       ]);
+
+      if (sumRes && sumRes.ok) {
+        const sumJson = await sumRes.json().catch(() => null);
+        if (sumJson?.data?.worker) {
+          setWorkerStatus(sumJson.data.worker);
+        }
+      } else if (workerRes && workerRes.ok) {
+        const wData = await workerRes.json();
+        setWorkerStatus(wData.data || { isRunning: false, isEnabled: false });
+      }
 
       if (candRes && candRes.ok) {
         const cData = await candRes.json();
@@ -329,11 +351,6 @@ export default function JobHunterDashboard() {
         const lData = await logsRes.json();
         setAuditLogs(lData.data || []);
       }
-
-      if (workerRes && workerRes.ok) {
-        const wData = await workerRes.json();
-        setWorkerStatus(wData.data || { isRunning: false, isEnabled: false });
-      }
     } catch {
       setErrorMessage("Could not connect to Backend API. Ensure Backend is running on port 3000.");
     } finally {
@@ -344,7 +361,8 @@ export default function JobHunterDashboard() {
   // Fetch Resumes when candidate changes
   useEffect(() => {
     if (!currentCandidate) return;
-    fetch(`${API_BASE}/candidates/${currentCandidate.id}/resumes`)
+    const api = getApiBase();
+    fetch(`${api}/candidates/${currentCandidate.id}/resumes`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data?.data) {
@@ -356,6 +374,13 @@ export default function JobHunterDashboard() {
 
   useEffect(() => {
     fetchData();
+
+    // Auto-refresh summary every 15 seconds to reflect background worker runs seamlessly
+    const interval = setInterval(() => {
+      fetchData();
+    }, 15000);
+
+    return () => clearInterval(interval);
   }, []);
 
   // Selected Application Object
@@ -1283,14 +1308,20 @@ export default function JobHunterDashboard() {
                 {/* Real-time System & Autonomous Worker Metrics */}
                 <div className="stats-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "12px", marginBottom: "20px" }}>
                   <div className="stat-card" style={{ borderLeft: workerStatus.isRunning ? "4px solid #3b82f6" : workerStatus.isEnabled ? "4px solid #10b981" : "4px solid #94a3b8" }}>
-                    <div className="stat-label">Worker Status</div>
-                    <div className="stat-val" style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "16px", color: workerStatus.isRunning ? "#2563eb" : workerStatus.isEnabled ? "#059669" : "#64748b" }}>
+                    <div className="stat-label">Worker Status • حالة المحرك</div>
+                    <div className="stat-val" style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "15px", color: workerStatus.isRunning ? "#2563eb" : workerStatus.isEnabled ? "#059669" : "#64748b" }}>
                       <span className="pulse-dot" style={{ background: workerStatus.isRunning ? "#3b82f6" : workerStatus.isEnabled ? "#10b981" : "#94a3b8" }} />
-                      {workerStatus.isRunning ? "RUNNING" : workerStatus.isEnabled ? "IDLE / ACTIVE" : "STOPPED"}
+                      {workerStatus.statusLabelAr || (workerStatus.isRunning ? "جاري التنفيذ" : workerStatus.isEnabled ? "يعمل بالخلفية - في انتظار الدورة التالية" : "متوقف")}
                     </div>
-                    <div className="stat-hint" style={{ fontSize: "11px" }}>
-                      Mode: <strong>{workerStatus.applicationMode || "AUTONOMOUS"}</strong> {workerStatus.dryRun ? "(DRY RUN)" : ""}
+                    <div className="stat-hint" style={{ fontSize: "11px", marginTop: "2px" }}>
+                      {workerStatus.statusLabelEn ? <span>{workerStatus.statusLabelEn} • </span> : null}
+                      Mode: <strong>{workerStatus.applicationMode || "MANUAL"}</strong> {workerStatus.dryRun ? "(DRY RUN)" : ""}
                     </div>
+                    {workerStatus.nextRunAt && (
+                      <div style={{ fontSize: "10px", color: "var(--muted)", marginTop: "2px" }}>
+                        Next run: {new Date(workerStatus.nextRunAt).toLocaleTimeString()}
+                      </div>
+                    )}
                   </div>
 
                   <div className="stat-card">
@@ -1322,9 +1353,9 @@ export default function JobHunterDashboard() {
                   <div className="stat-card" style={{ borderLeft: "4px solid #f59e0b" }}>
                     <div className="stat-label">Applications Queued</div>
                     <div className="stat-val" style={{ color: "#d97706" }}>
-                      {workerStatus.lastStats?.applicationsQueued || 0}
+                      {applications.filter((a) => a.status === "PENDING_APPROVAL").length}
                     </div>
-                    <div className="stat-hint">Grounded & verified for channel</div>
+                    <div className="stat-hint">Pending human review / approval</div>
                   </div>
 
                   <div className="stat-card" style={{ borderLeft: "4px solid #2563eb" }}>
@@ -1338,7 +1369,7 @@ export default function JobHunterDashboard() {
                   <div className="stat-card" style={{ borderLeft: "4px solid #ef4444" }}>
                     <div className="stat-label">Blocked (Anti-Bot)</div>
                     <div className="stat-val" style={{ color: "#dc2626" }}>
-                      {preparedApplications.filter((p) => p.requiresManualAction).length}
+                      {preparedApplications.filter((p) => p.freshnessStatus === "BLOCKED").length}
                     </div>
                     <div className="stat-hint">0 bypass attempts (safe)</div>
                   </div>
@@ -1346,7 +1377,7 @@ export default function JobHunterDashboard() {
                   <div className="stat-card" style={{ borderLeft: "4px solid #8b5cf6" }}>
                     <div className="stat-label">Duplicates Prevented</div>
                     <div className="stat-val" style={{ color: "#7c3aed" }}>
-                      {workerStatus.lastStats?.duplicatesPrevented || workerStatus.lastStats?.duplicatesSkipped || 263}
+                      {workerStatus.lastStats?.duplicatesPrevented ?? workerStatus.lastStats?.duplicatesSkipped ?? 0}
                     </div>
                     <div className="stat-hint">Cross-source deduplicated</div>
                   </div>

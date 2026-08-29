@@ -143,9 +143,32 @@ export class JobPollingWorker {
   }
 
   public getStatus(): WorkerStatus {
+    const isSchedulerRunning = this.timer !== null;
+    let schedulerStatus: import("./types.js").WorkerSchedulerState = "STOPPED";
+    let statusLabelAr = "متوقف";
+    let statusLabelEn = "Stopped";
+
+    if (this.isRunning) {
+      schedulerStatus = "RUNNING";
+      statusLabelAr = "جاري التنفيذ";
+      statusLabelEn = "Running Cycle";
+    } else if (this.isEnabled && isSchedulerRunning) {
+      schedulerStatus = "IDLE_WAITING";
+      statusLabelAr = "يعمل بالخلفية - في انتظار الدورة التالية";
+      statusLabelEn = "Active Scheduler (Idle / Waiting)";
+    } else if (this.isEnabled) {
+      schedulerStatus = "SCHEDULED_ENABLED";
+      statusLabelAr = "مفعّل";
+      statusLabelEn = "Enabled";
+    }
+
     return {
       isRunning: this.isRunning,
       isEnabled: this.isEnabled,
+      schedulerRunning: isSchedulerRunning,
+      schedulerStatus,
+      statusLabelAr,
+      statusLabelEn,
       intervalMinutes: this.intervalMinutes,
       matchThreshold: this.matchThreshold,
       applicationMode: this.applicationMode,
@@ -159,6 +182,8 @@ export class JobPollingWorker {
       lastRunAt: this.lastRunAt,
       nextRunAt: this.nextRunAt,
       lastStats: this.lastStats,
+      lastStatus: this.lastStats?.status || (this.lastRunAt ? "SUCCESS" : "NEVER_RUN"),
+      lastError: this.lastStats?.errors?.[0]?.message || null,
     };
   }
 

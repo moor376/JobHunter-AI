@@ -63,9 +63,17 @@ export interface WorkerConfiguration {
   maxBatchSends: number;
 }
 
+export type WorkerSchedulerState = "RUNNING" | "IDLE_WAITING" | "SCHEDULED_ENABLED" | "STOPPED";
+
 export interface WorkerStatus extends WorkerConfiguration {
   isRunning: boolean;
+  schedulerRunning: boolean;
+  schedulerStatus: WorkerSchedulerState;
+  statusLabelAr: string;
+  statusLabelEn: string;
   lastRunAt: Date | null;
   nextRunAt: Date | null;
   lastStats: WorkerRunStats | null;
+  lastStatus?: string;
+  lastError?: string | null;
 }
