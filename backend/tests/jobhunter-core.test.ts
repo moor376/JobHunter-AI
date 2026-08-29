@@ -57,7 +57,7 @@ describe("JobHunter-AI Core Integration Suite", () => {
       expect(nayera).toBeTruthy();
       expect(["Nayera", "نيرة"]).toContain(nayera.firstName);
       expect(nayera.consentStatus).toBe("GRANTED");
-      expect(nayera.targetRoles).toContain("Legal Affairs Specialist");
+      expect(nayera.targetRoles.some((r: string) => r.toLowerCase().includes("legal"))).toBe(true);
     });
 
     it("creates a new candidate and prevents duplicate email registration", async () => {

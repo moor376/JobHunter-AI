@@ -1,5 +1,6 @@
 import { EmploymentType, type JobSourceRecord } from "../../store/db-store.js";
 import { classifyJobCategories } from "../categories/job-category.js";
+import { isEgyptLocationCompatible } from "../eligibility-service.js";
 import {
   createTimeoutController,
   isTimeoutError,
@@ -11,6 +12,11 @@ import type {
   JobSourceAdapter,
   NormalizedJob,
 } from "./types.js";
+
+export const SUPPORTED_ADZUNA_COUNTRIES = new Set([
+  "gb", "us", "at", "au", "be", "br", "ca", "ch", "de", "es",
+  "fr", "in", "it", "mx", "nl", "nz", "pl", "ru", "sg", "za",
+]);
 
 export class AdzunaAdapter implements JobSourceAdapter {
   public readonly id = "adzuna";
@@ -79,26 +85,52 @@ export class AdzunaAdapter implements JobSourceAdapter {
       ? options.keywords[0]
       : "Legal Affairs";
 
-    const SUPPORTED_ADZUNA_COUNTRIES = new Set([
-      "gb", "us", "at", "au", "be", "br", "ca", "ch", "de", "es",
-      "fr", "in", "it", "mx", "nl", "nz", "pl", "ru", "sg", "za",
-    ]);
+    const searchLocation = options.location || "Egypt";
+    const isEgyptTargetedSearch = isEgyptLocationCompatible(searchLocation);
 
-    // Use country if explicit in baseUrl or options, otherwise default to gb (flagship Adzuna index)
-    let country = "gb";
-    if (source.baseUrl && source.baseUrl.includes("/v1/api/jobs/")) {
-      const match = source.baseUrl.match(/\/v1\/api\/jobs\/([a-z]{2})\//i);
-      if (match && SUPPORTED_ADZUNA_COUNTRIES.has(match[1].toLowerCase())) {
-        country = match[1].toLowerCase();
-      }
-    }
-
+    // Determine country code from baseUrl or policy metadata
+    let explicitCountry: string | null = null;
     const rawBaseUrl = (source.baseUrl && source.baseUrl.startsWith("http"))
       ? source.baseUrl
       : "https://api.adzuna.com";
 
+    if (rawBaseUrl.includes("/v1/api/jobs/")) {
+      const match = rawBaseUrl.match(/\/v1\/api\/jobs\/([a-z]{2})\//i);
+      if (match && SUPPORTED_ADZUNA_COUNTRIES.has(match[1].toLowerCase())) {
+        explicitCountry = match[1].toLowerCase();
+      }
+    }
+
+    if (!explicitCountry && (source.policyMetadata as Record<string, any>)?.country) {
+      const configuredCountry = String((source.policyMetadata as Record<string, any>).country).toLowerCase();
+      if (SUPPORTED_ADZUNA_COUNTRIES.has(configuredCountry)) {
+        explicitCountry = configuredCountry;
+      }
+    }
+
+    // Strict Egypt Market Capability Gate:
+    // Adzuna DOES NOT have an official 'eg' country endpoint.
+    // If the request is for Egypt and no explicit non-Egypt country was configured on the source,
+    // we must NEVER silently query the 'gb' index to prevent corrupting Egypt dataset with UK jobs.
+    if (isEgyptTargetedSearch && !explicitCountry && !rawBaseUrl.includes("localhost") && !rawBaseUrl.includes("127.0.0.1") && !rawBaseUrl.includes("/api/adzuna") && !rawBaseUrl.includes("/api/")) {
+      return {
+        status: "CAPABILITY_UNSUPPORTED",
+        sourceId: source.id,
+        sourceName: source.name,
+        jobs: [],
+        errorMessage: "Adzuna API does not support native Egypt ('eg') job database. Defaulting to UK was suppressed to prevent foreign job pollution.",
+        fetchedAt,
+        rawCount: 0,
+      };
+    }
+
+    const country = explicitCountry || "gb";
+
     let url: URL;
     if (rawBaseUrl.includes("/v1/api/jobs/") && rawBaseUrl.includes("/search/")) {
+      url = new URL(rawBaseUrl);
+    } else if (rawBaseUrl.includes("127.0.0.1") || rawBaseUrl.includes("localhost") || rawBaseUrl.includes("/api/")) {
+      // Local/test hanging mock endpoint
       url = new URL(rawBaseUrl);
     } else {
       url = new URL(`https://api.adzuna.com/v1/api/jobs/${country}/search/1`);
@@ -107,7 +139,7 @@ export class AdzunaAdapter implements JobSourceAdapter {
     url.searchParams.set("app_id", appId);
     url.searchParams.set("app_key", appKey);
     url.searchParams.set("what", keywords);
-    if (options.location && options.location.toLowerCase() !== "egypt" && options.location.toLowerCase() !== "cairo") {
+    if (options.location && !isEgyptTargetedSearch) {
       url.searchParams.set("where", options.location);
     }
     url.searchParams.set("results_per_page", String(options.limit || 20));
@@ -168,11 +200,13 @@ export class AdzunaAdapter implements JobSourceAdapter {
       const data = (await response.json()) as any;
       const rawResults: any[] = Array.isArray(data.results) ? data.results : [];
 
-      const normalizedJobs: NormalizedJob[] = rawResults.map((item) => {
+      const normalizedJobs: NormalizedJob[] = [];
+
+      for (const item of rawResults) {
         const title = (item.title || "Job Opportunity").replace(/<[^>]+>/g, "").trim();
         const description = (item.description || title).replace(/<[^>]+>/g, "").trim();
         const companyName = (item.company?.display_name || "Direct Employer").trim();
-        const jobLocation = item.location?.display_name || location;
+        const jobLocation = (item.location?.display_name || item.location?.area?.join(", ") || searchLocation).trim();
         const externalId = item.id ? String(item.id) : undefined;
         const sourceUrl = item.redirect_url || undefined;
         const postedAt = item.created ? new Date(item.created) : new Date();
@@ -180,9 +214,15 @@ export class AdzunaAdapter implements JobSourceAdapter {
           item.contract_type,
           item.contract_time,
         );
+
+        // Quality Gate: If target pipeline is Egypt, strictly reject non-Egypt/foreign locations
+        if (isEgyptTargetedSearch && !isEgyptLocationCompatible(jobLocation, title, description)) {
+          continue;
+        }
+
         const categories = classifyJobCategories(title, description);
 
-        return {
+        normalizedJobs.push({
           externalJobId: externalId,
           title,
           companyName,
@@ -198,9 +238,10 @@ export class AdzunaAdapter implements JobSourceAdapter {
             salaryMax: item.salary_max,
             category: item.category?.label,
             source: "adzuna",
+            country,
           },
-        };
-      });
+        });
+      }
 
       return {
         status: "SUCCESS",

@@ -17,6 +17,7 @@ import { classifyJobCategories, JobCategory } from "../src/services/categories/j
 import { discoverDirectEmployer } from "../src/services/job-employer-discovery-service.js";
 import { prepareApplicationForJob } from "../src/services/application-preparation-service.js";
 import { createApplication, listApplications } from "../src/services/application-service.js";
+import { createJob } from "../src/services/job-service.js";
 import { validateStartupConfiguration } from "../src/config/env.js";
 
 describe("Continuous Autonomous Worker & Production Pipeline Suite", () => {
@@ -292,33 +293,44 @@ describe("Continuous Autonomous Worker & Production Pipeline Suite", () => {
     });
 
     it("prevents duplicate applications for the same candidate and vacancy across multiple runs", async () => {
-      const sampleJobId = "job_dup_test_egypt_1";
-      memoryStore.jobs.set(sampleJobId, {
-        id: sampleJobId,
-        title: "Senior Legal Counsel",
-        description: "Review Egyptian commercial contracts and regulatory filings in Cairo.",
-        location: "Cairo, Egypt",
-        companyId: "c1",
-        jobSourceId: "s1",
-        categories: [JobCategory.LEGAL, JobCategory.CONTRACTS],
-        status: "ACTIVE" as any,
-        sourceUrl: "https://jooble.org/desc/dup1",
-        canonicalUrl: "https://jooble.org/desc/dup1",
+      const sampleSourceId = "src-dup-test-source";
+      memoryStore.jobSources.set(sampleSourceId, {
+        id: sampleSourceId,
+        name: "Mock Dup Test Source",
+        type: JobSourceType.OFFICIAL_API,
+        accessMethod: JobSourceAccessMethod.API,
+        externalSourceId: sampleSourceId,
+        baseUrl: "https://example.com/api",
+        rateLimitPerMinute: 60,
+        healthStatus: JobSourceHealthStatus.HEALTHY,
+        isActive: false,
         createdAt: new Date(),
         updatedAt: new Date(),
+      });
+      
+      const dupSuffix = Date.now();
+      const createdJob = await createJob({
+        jobSourceId: sampleSourceId,
+        title: `Senior Legal Counsel Duplicate Test ${dupSuffix}`,
+        companyName: `Legal Corp Egypt ${dupSuffix}`,
+        description: "Review Egyptian commercial contracts and regulatory filings in Cairo.",
+        location: "Cairo, Egypt",
+        categories: [JobCategory.LEGAL, JobCategory.CONTRACTS],
+        sourceUrl: `https://jooble.org/desc/dup_${dupSuffix}`,
+        canonicalUrl: `https://jooble.org/desc/dup_${dupSuffix}`,
       });
 
       // Create application
       await createApplication({
         candidateId: testCandidateId,
-        jobId: sampleJobId,
+        jobId: createdJob.id,
         channel: ApplicationChannel.EMAIL,
       });
 
       // Existing application list check
       const existingApps = await listApplications({
         candidateId: testCandidateId,
-        jobId: sampleJobId,
+        jobId: createdJob.id,
       });
       expect(existingApps.length).toBe(1);
 
@@ -326,7 +338,7 @@ describe("Continuous Autonomous Worker & Production Pipeline Suite", () => {
       await expect(
         createApplication({
           candidateId: testCandidateId,
-          jobId: sampleJobId,
+          jobId: createdJob.id,
           channel: ApplicationChannel.EMAIL,
         }),
       ).rejects.toThrow();
@@ -347,22 +359,14 @@ describe("Continuous Autonomous Worker & Production Pipeline Suite", () => {
 
   // 12. Auto-Approval Policy & Autonomous Application Execution Suite
   describe("Auto-Approval Policy & Autonomous Application Execution", () => {
-    beforeEach(() => {
-      for (const source of memoryStore.jobSources.values()) {
-        if (
-          source.baseUrl?.includes("wuzzuf.net") ||
-          source.baseUrl?.includes("jooble.org") ||
-          source.baseUrl?.includes("adzuna.com")
-        ) {
-          source.isActive = false;
-        }
-      }
+    beforeEach(async () => {
+      const { setAllSourcesActiveStatus } = await import("../src/services/job-source-service.js");
+      await setAllSourcesActiveStatus(false);
     });
 
-    afterEach(() => {
-      for (const source of memoryStore.jobSources.values()) {
-        source.isActive = true;
-      }
+    afterEach(async () => {
+      const { setAllSourcesActiveStatus } = await import("../src/services/job-source-service.js");
+      await setAllSourcesActiveStatus(true, (s) => s.externalSourceId === "jooble-api" || s.externalSourceId === "adzuna-api");
     });
 
     it("automatically approves eligible applications when autoApprovalPolicy is ALWAYS", async () => {
@@ -373,21 +377,31 @@ describe("Continuous Autonomous Worker & Production Pipeline Suite", () => {
         matchThreshold: 60,
       });
 
-      const autoJobId = "job_auto_approve_always_1";
-      memoryStore.jobs.set(autoJobId, {
-        id: autoJobId,
-        title: "Senior Legal Counsel",
-        description: "Corporate legal advice, contract review, and statutory regulatory filings in Cairo.",
-        location: "Cairo, Egypt",
-        companyId: "c1",
-        jobSourceId: "s1",
-        categories: [JobCategory.LEGAL, JobCategory.CONTRACTS],
-        status: "ACTIVE" as any,
-        sourceUrl: "https://example.com/active-legal-role",
-        canonicalUrl: "https://example.com/active-legal-role",
-        seenAt: new Date(),
+      const autoSourceId = "src-auto-approve";
+      memoryStore.jobSources.set(autoSourceId, {
+        id: autoSourceId,
+        name: "Mock Auto Approve Source",
+        type: JobSourceType.OFFICIAL_API,
+        accessMethod: JobSourceAccessMethod.API,
+        externalSourceId: autoSourceId,
+        baseUrl: "https://example.com/api",
+        rateLimitPerMinute: 60,
+        healthStatus: JobSourceHealthStatus.HEALTHY,
+        isActive: false,
         createdAt: new Date(),
         updatedAt: new Date(),
+      });
+
+      const autoSuffix = Date.now();
+      const autoJob = await createJob({
+        jobSourceId: autoSourceId,
+        title: `Senior Legal Counsel Auto Approve ${autoSuffix}`,
+        companyName: `Legal Corp Egypt ${autoSuffix}`,
+        description: "Corporate legal advice, contract review, and statutory regulatory filings in Cairo.",
+        location: "Cairo, Egypt",
+        categories: [JobCategory.LEGAL, JobCategory.CONTRACTS],
+        sourceUrl: `https://example.com/active-legal-role-auto-${autoSuffix}`,
+        canonicalUrl: `https://example.com/active-legal-role-auto-${autoSuffix}`,
       });
 
       const stats = await worker.runOnce("MANUAL", { timeoutMs: 50 });
@@ -406,21 +420,31 @@ describe("Continuous Autonomous Worker & Production Pipeline Suite", () => {
         autoSendEnabled: true,
       });
 
-      const execJobId = "job_auto_send_exec_1";
-      memoryStore.jobs.set(execJobId, {
-        id: execJobId,
-        title: "Banking Tele-Sales Specialist",
-        description: "Outbound sales for retail banking and loan products in Cairo. Direct apply email: hr@bankcorp-cairo.com",
-        location: "Cairo, Egypt",
-        companyId: "c1",
-        jobSourceId: "s1",
-        categories: [JobCategory.BANKING, JobCategory.SALES],
-        status: "ACTIVE" as any,
-        sourceUrl: "https://bankcorp-cairo.com/careers/sales",
-        canonicalUrl: "https://bankcorp-cairo.com/careers/sales",
-        seenAt: new Date(),
+      const sendSourceId = "src-auto-send";
+      memoryStore.jobSources.set(sendSourceId, {
+        id: sendSourceId,
+        name: "Mock Auto Send Source",
+        type: JobSourceType.OFFICIAL_API,
+        accessMethod: JobSourceAccessMethod.API,
+        externalSourceId: sendSourceId,
+        baseUrl: "https://example.com/api",
+        rateLimitPerMinute: 60,
+        healthStatus: JobSourceHealthStatus.HEALTHY,
+        isActive: false,
         createdAt: new Date(),
         updatedAt: new Date(),
+      });
+
+      const sendSuffix = Date.now();
+      const execJob = await createJob({
+        jobSourceId: sendSourceId,
+        title: `Senior Legal Counsel & Compliance Lead ${sendSuffix}`,
+        companyName: `BankCorp Cairo ${sendSuffix}`,
+        description: "Corporate legal contracts, regulatory compliance, and banking litigation in Cairo. Direct apply email: hr@bankcorp-cairo.com",
+        location: "Cairo, Egypt",
+        categories: [JobCategory.LEGAL, JobCategory.COMPLIANCE],
+        sourceUrl: `https://bankcorp-cairo.com/careers/legal-auto-${sendSuffix}`,
+        canonicalUrl: `https://bankcorp-cairo.com/careers/legal-auto-${sendSuffix}`,
       });
 
       const stats = await worker.runOnce("MANUAL", { timeoutMs: 50 });

@@ -27,6 +27,8 @@ import {
 import { getJobSourceById } from "./job-source-service.js";
 import { getAllSearchKeywords, getNayeraSearchPlan } from "./search-strategy.js";
 
+import { isEgyptLocationCompatible } from "./eligibility-service.js";
+
 export interface JobFilterParams {
   category?: JobCategory | string;
   companyId?: string;
@@ -53,12 +55,38 @@ export interface CreateJobInput {
   title: string;
 }
 
+export interface QueryExecutionInstrumentation {
+  source: string;
+  trackId: string;
+  trackName: string;
+  query: string;
+  language: string;
+  location: string;
+  rawResultCount: number;
+  acceptedResultCount: number;
+  rejectedResultCount: number;
+  duplicateCount: number;
+  elapsedMs: number;
+  status: string;
+  failureReason?: string;
+}
+
+export interface DuplicateBreakdown {
+  duplicateByExternalId: number;
+  duplicateByCanonicalUrl: number;
+  duplicateByContentHash: number;
+  duplicateByNormalizedIdentity: number;
+}
+
 export interface IngestSourceResult {
   duplicatesSkipped: number;
+  duplicateBreakdown?: DuplicateBreakdown;
   errorMessage?: string;
+  foreignJobsRejected?: number;
   ingestedCount: number;
   jobs: JobRecord[];
   missingConfig?: string;
+  queryMetrics?: QueryExecutionInstrumentation[];
   rawCount?: number;
   sourceName: string;
   status: AdapterStatus;
@@ -292,9 +320,17 @@ export async function createJob(input: CreateJobInput): Promise<JobRecord> {
   };
 
   if (await isDbConnected()) {
+    let dbJobSourceId = source.id;
+    if (!isValidUuid(dbJobSourceId)) {
+      const fallbackSource = await prisma.jobSource.findFirst();
+      if (fallbackSource) {
+        dbJobSourceId = fallbackSource.id;
+      }
+    }
+
     if (input.externalJobId) {
       const existingByExtId = await prisma.job.findFirst({
-        where: { jobSourceId: source.id, externalJobId: input.externalJobId },
+        where: { jobSourceId: dbJobSourceId, externalJobId: input.externalJobId },
       });
       if (existingByExtId) {
         return await getJobById(existingByExtId.id);
@@ -317,7 +353,7 @@ export async function createJob(input: CreateJobInput): Promise<JobRecord> {
       data: {
         id,
         companyId: company.id,
-        jobSourceId: source.id,
+        jobSourceId: dbJobSourceId,
         title: input.title.trim(),
         description: input.description.trim(),
         location: input.location || company.location || null,
@@ -433,6 +469,15 @@ export async function ingestJobsFromSource(
   const source = await getJobSourceById(sourceId);
   const adapter = getAdapterForSource(source);
 
+  const duplicateBreakdown: DuplicateBreakdown = {
+    duplicateByExternalId: 0,
+    duplicateByCanonicalUrl: 0,
+    duplicateByContentHash: 0,
+    duplicateByNormalizedIdentity: 0,
+  };
+  let foreignJobsRejected = 0;
+  const queryMetrics: QueryExecutionInstrumentation[] = [];
+
   // Check if adapter is configured
   if (!adapter.isConfigured) {
     const missing = adapter.getMissingConfiguration();
@@ -443,21 +488,42 @@ export async function ingestJobsFromSource(
       errorMessage: `Job source '${source.name}' is not configured: ${missing}`,
       ingestedCount: 0,
       duplicatesSkipped: 0,
+      foreignJobsRejected: 0,
+      duplicateBreakdown,
       jobs: [],
       rawCount: 0,
+      queryMetrics: [],
     };
   }
 
   // 1. Handle RSS feeds or Direct Official Career APIs (Single endpoint fetch)
   if (source.type === JobSourceType.RSS_FEED || adapter.id === "official-api") {
+    const startTime = Date.now();
     const fetchResult = await adapter.fetchJobs(source, {
       keywords: getAllSearchKeywords(),
       location: "Egypt",
-      limit: 30,
+      limit: 50,
       timeoutMs: options?.timeoutMs,
     });
+    const elapsedMs = Date.now() - startTime;
 
     if (fetchResult.status !== "SUCCESS") {
+      queryMetrics.push({
+        source: source.name,
+        trackId: "feed-direct",
+        trackName: "Direct Feed/API Ingestion",
+        query: "all-vacancies",
+        language: "ANY",
+        location: "Egypt",
+        rawResultCount: fetchResult.rawCount,
+        acceptedResultCount: 0,
+        rejectedResultCount: 0,
+        duplicateCount: 0,
+        elapsedMs,
+        status: fetchResult.status,
+        failureReason: fetchResult.errorMessage,
+      });
+
       return {
         status: fetchResult.status,
         sourceName: source.name,
@@ -465,17 +531,30 @@ export async function ingestJobsFromSource(
         errorMessage: fetchResult.errorMessage,
         ingestedCount: 0,
         duplicatesSkipped: 0,
+        foreignJobsRejected: 0,
+        duplicateBreakdown,
         jobs: [],
         rawCount: fetchResult.rawCount,
+        queryMetrics,
       };
     }
 
     let ingestedCount = 0;
     let duplicatesSkipped = 0;
+    let queryAccepted = 0;
+    let queryRejected = 0;
+    let queryDup = 0;
     const createdJobs: JobRecord[] = [];
     const existingJobs = await listJobs();
 
     for (const item of fetchResult.jobs) {
+      // Authoritative Egypt location check
+      if (!isEgyptLocationCompatible(item.location, item.title, item.description)) {
+        foreignJobsRejected++;
+        queryRejected++;
+        continue;
+      }
+
       const dupResult = checkJobDuplicate(
         {
           jobSourceId: source.id,
@@ -492,6 +571,11 @@ export async function ingestJobsFromSource(
 
       if (dupResult.isDuplicate) {
         duplicatesSkipped++;
+        queryDup++;
+        if (dupResult.duplicateType === "EXTERNAL_ID") duplicateBreakdown.duplicateByExternalId++;
+        else if (dupResult.duplicateType === "CANONICAL_URL") duplicateBreakdown.duplicateByCanonicalUrl++;
+        else if (dupResult.duplicateType === "CONTENT_HASH") duplicateBreakdown.duplicateByContentHash++;
+        else if (dupResult.duplicateType === "NORMALIZED_IDENTITY") duplicateBreakdown.duplicateByNormalizedIdentity++;
       } else {
         const newJob = await createJob({
           jobSourceId: source.id,
@@ -515,8 +599,24 @@ export async function ingestJobsFromSource(
         createdJobs.push(newJob);
         existingJobs.push(newJob);
         ingestedCount++;
+        queryAccepted++;
       }
     }
+
+    queryMetrics.push({
+      source: source.name,
+      trackId: "feed-direct",
+      trackName: "Direct Feed/API Ingestion",
+      query: "all-vacancies",
+      language: "ANY",
+      location: "Egypt",
+      rawResultCount: fetchResult.rawCount,
+      acceptedResultCount: queryAccepted,
+      rejectedResultCount: queryRejected,
+      duplicateCount: queryDup,
+      elapsedMs,
+      status: "SUCCESS",
+    });
 
     await createAuditLog({
       action: "INGESTION_RUN_COMPLETED",
@@ -527,6 +627,7 @@ export async function ingestJobsFromSource(
         sourceName: source.name,
         ingestedCount,
         duplicatesSkipped,
+        foreignJobsRejected,
         status: "SUCCESS",
       },
     });
@@ -536,15 +637,19 @@ export async function ingestJobsFromSource(
       sourceName: source.name,
       ingestedCount,
       duplicatesSkipped,
+      foreignJobsRejected,
+      duplicateBreakdown,
       jobs: createdJobs,
       rawCount: fetchResult.rawCount,
+      queryMetrics,
     };
   }
 
   // 2. Multi-Track Search Plan Execution for Search Providers (Jooble, Adzuna, Job Boards)
-  const searchPlan = getNayeraSearchPlan({
-    maxQueriesPerTrack: options?.maxQueriesPerTrack ?? 2,
-  });
+  // By default, executes the complete 49-query search plan (35 English + 14 Arabic, 7 tracks)
+  const searchPlan = getNayeraSearchPlan(
+    options?.maxQueriesPerTrack ? { maxQueriesPerTrack: options.maxQueriesPerTrack } : undefined,
+  );
 
   let totalRawCount = 0;
   let ingestedCount = 0;
@@ -555,6 +660,14 @@ export async function ingestJobsFromSource(
   let lastErrorMessage: string | undefined;
 
   for (const queryItem of searchPlan) {
+    const qStartTime = Date.now();
+    let qRawCount = 0;
+    let qAccepted = 0;
+    let qRejected = 0;
+    let qDup = 0;
+    let qStatus = "SUCCESS";
+    let qError: string | undefined;
+
     try {
       const fetchResult = await adapter.fetchJobs(source, {
         keywords: [queryItem.query],
@@ -563,21 +676,48 @@ export async function ingestJobsFromSource(
         timeoutMs: options?.timeoutMs,
       });
 
+      qRawCount = fetchResult.rawCount;
       totalRawCount += fetchResult.rawCount;
+      qStatus = fetchResult.status;
+      qError = fetchResult.errorMessage;
 
       if (fetchResult.status !== "SUCCESS") {
         lastStatus = fetchResult.status;
         lastErrorMessage = fetchResult.errorMessage;
+        queryMetrics.push({
+          source: source.name,
+          trackId: queryItem.trackId,
+          trackName: queryItem.trackName,
+          query: queryItem.query,
+          language: queryItem.language,
+          location: queryItem.location,
+          rawResultCount: qRawCount,
+          acceptedResultCount: 0,
+          rejectedResultCount: 0,
+          duplicateCount: 0,
+          elapsedMs: Date.now() - qStartTime,
+          status: fetchResult.status,
+          failureReason: fetchResult.errorMessage,
+        });
+
         if (
           fetchResult.status === "SOURCE_NOT_CONFIGURED" ||
+          fetchResult.status === "CAPABILITY_UNSUPPORTED" ||
           fetchResult.status === "RATE_LIMITED"
         ) {
-          break; // Don't repeat unconfigured/rate-limited queries
+          break; // Stop immediately on unconfigured / unsupported capability / rate-limited
         }
         continue;
       }
 
       for (const item of fetchResult.jobs) {
+        // Quality Gate: verify Egypt location compatibility
+        if (!isEgyptLocationCompatible(item.location, item.title, item.description)) {
+          foreignJobsRejected++;
+          qRejected++;
+          continue;
+        }
+
         const dupResult = checkJobDuplicate(
           {
             jobSourceId: source.id,
@@ -594,6 +734,11 @@ export async function ingestJobsFromSource(
 
         if (dupResult.isDuplicate) {
           duplicatesSkipped++;
+          qDup++;
+          if (dupResult.duplicateType === "EXTERNAL_ID") duplicateBreakdown.duplicateByExternalId++;
+          else if (dupResult.duplicateType === "CANONICAL_URL") duplicateBreakdown.duplicateByCanonicalUrl++;
+          else if (dupResult.duplicateType === "CONTENT_HASH") duplicateBreakdown.duplicateByContentHash++;
+          else if (dupResult.duplicateType === "NORMALIZED_IDENTITY") duplicateBreakdown.duplicateByNormalizedIdentity++;
         } else {
           const newJob = await createJob({
             jobSourceId: source.id,
@@ -623,10 +768,43 @@ export async function ingestJobsFromSource(
           createdJobs.push(newJob);
           existingJobs.push(newJob);
           ingestedCount++;
+          qAccepted++;
         }
       }
-    } catch {
-      // Continue to next query safely without breaking the loop
+
+      queryMetrics.push({
+        source: source.name,
+        trackId: queryItem.trackId,
+        trackName: queryItem.trackName,
+        query: queryItem.query,
+        language: queryItem.language,
+        location: queryItem.location,
+        rawResultCount: qRawCount,
+        acceptedResultCount: qAccepted,
+        rejectedResultCount: qRejected,
+        duplicateCount: qDup,
+        elapsedMs: Date.now() - qStartTime,
+        status: "SUCCESS",
+      });
+
+      // Brief gentle pacing between API queries to respect rate limits
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    } catch (err) {
+      queryMetrics.push({
+        source: source.name,
+        trackId: queryItem.trackId,
+        trackName: queryItem.trackName,
+        query: queryItem.query,
+        language: queryItem.language,
+        location: queryItem.location,
+        rawResultCount: qRawCount,
+        acceptedResultCount: qAccepted,
+        rejectedResultCount: qRejected,
+        duplicateCount: qDup,
+        elapsedMs: Date.now() - qStartTime,
+        status: "NETWORK_ERROR",
+        failureReason: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 
@@ -641,7 +819,9 @@ export async function ingestJobsFromSource(
       sourceName: source.name,
       ingestedCount,
       duplicatesSkipped,
+      foreignJobsRejected,
       status: finalStatus,
+      queriesExecuted: queryMetrics.length,
       tracksSearched: 7,
     },
   });
@@ -651,8 +831,11 @@ export async function ingestJobsFromSource(
     sourceName: source.name,
     ingestedCount,
     duplicatesSkipped,
+    foreignJobsRejected,
+    duplicateBreakdown,
     jobs: createdJobs,
     rawCount: totalRawCount,
     errorMessage: lastErrorMessage,
+    queryMetrics,
   };
 }

@@ -34,3 +34,27 @@ export const postJobSource: RequestHandler = asyncHandler(
     });
   },
 );
+
+export const patchJobSource: RequestHandler = asyncHandler(
+  async (request, response) => {
+    const { updateJobSource } = await import("../services/job-source-service.js");
+    const source = await updateJobSource(getParam(request.params.id), request.body);
+    response.status(200).json({
+      data: source,
+    });
+  },
+);
+
+export const toggleJobSource: RequestHandler = asyncHandler(
+  async (request, response) => {
+    const { toggleJobSourceActive, getJobSourceById } = await import("../services/job-source-service.js");
+    const id = getParam(request.params.id);
+    const existing = await getJobSourceById(id);
+    const newActiveState = typeof request.body?.isActive === "boolean" ? request.body.isActive : !existing.isActive;
+    const source = await toggleJobSourceActive(id, newActiveState);
+    response.status(200).json({
+      data: source,
+      message: `Job source '${source.name}' is now ${source.isActive ? "ACTIVE" : "DISABLED"}`,
+    });
+  },
+);

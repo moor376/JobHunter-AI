@@ -193,9 +193,17 @@ export async function seedPostgresIfEmpty(): Promise<void> {
             createdAt: c.createdAt,
             updatedAt: c.updatedAt,
           },
-          update: {},
+          update: {
+            targetRoles: c.targetRoles,
+            profileSummary: c.profileSummary,
+            location: c.location,
+          },
         });
       }
+    }
+
+    const resumeCount = await prisma.resume.count();
+    if (resumeCount === 0) {
 
       for (const r of memoryStore.resumes.values()) {
         await prisma.resume.upsert({

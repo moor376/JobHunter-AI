@@ -22,7 +22,15 @@ async function main() {
     },
   });
 
-  console.log(JSON.stringify(candidate, null, 2));
+  console.log("Candidate summary:", {
+    id: candidate?.id,
+    email: candidate?.email,
+    firstName: candidate?.firstName,
+    lastName: candidate?.lastName,
+    targetRoles: candidate?.targetRoles,
+    consentStatus: candidate?.consentStatus,
+    isActive: candidate?.isActive,
+  });
   await prisma.$disconnect();
 }
 

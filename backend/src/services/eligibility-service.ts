@@ -116,58 +116,162 @@ const TECHNICAL_DISQUALIFIERS: RegExp[] = [
   /\b(subtitling specialist|video editor|motion graphics|pharmacist|physician|nurse|dentist)\b/i,
 ];
 
+export interface LocationEvaluationResult {
+  isCompatible: boolean;
+  classification: "EGYPT_LOCAL" | "EGYPT_REMOTE" | "EGYPT_HYBRID" | "FOREIGN_REJECTED" | "UNKNOWN";
+  matchedLocation: string;
+  reason: string;
+}
+
+export const EGYPT_LOCATION_PATTERNS = [
+  /\b(egypt|cairo|giza|greater cairo|new cairo|heliopolis|nasr city|alexandria|alex|6th of october|sheikh zayed|maadi|zamalek|dokki|mohandessin|smart village|tagamoa|shorouk|obour|rehab|madinaty|banha|menoufia|monufia|tanta|mansoura|assiut|hurghada|sharm|sharm el sheikh|el gouna|port said|suez|ismailia|damietta|sohag|luxor|aswan|minya|el menia|fayoum|beni suef|bani suef|kafr el sheikh|qalyubia|beheira|matrouh|marsa matrouh|alamein|el alamein|zagazig|sharqia|gharbia|dakahlia|red sea|10th of ramadan)\b/i,
+  /(مصر|القاهرة|الجيزة|مصر الجديدة|مدينة نصر|التجمع|التجمع الخامس|الاسكندرية|الإسكندرية|الشيخ زايد|أكتوبر|٦ أكتوبر|السادس من أكتوبر|المعادي|المهندسين|الدقي|الزمالك|القرية الذكية|الشروق|العبور|الرحاب|مدينتي|بنها|المنوفية|طنطا|المنصورة|أسيوط|الغردقة|شرم الشيخ|الجونة|بورسعيد|السويس|الإسماعيلية|اسماعيلية|دمياط|سوهاج|الأقصر|الاقصر|أسوان|اسوان|المنيا|الفيوم|بني سويف|كفر الشيخ|القليوبية|البحيرة|مطروح|مرسى مطروح|العلمين|الزقازيق|الشرقية|الغربية|الدقهلية|البحر الأحمر|العاشر من رمضان)/,
+];
+
+export const FOREIGN_LOCATION_PATTERNS = [
+  /\b(united kingdom|\buk\b|london|england|scotland|wales|belfast|peterborough|manchester|birmingham|leeds|bristol|buckinghamshire|surrey|kent|newcastle|newport|islington|chelsea|kensington|high wycombe|west midlands|tyne & wear|essex|cambridgeshire|ely|woodston|wallsend|esher|edinburgh|glasgow|liverpool|sheffield|nottingham|leicester|oxford|cambridge|croydon|southampton|reading)\b/i,
+  /\b(united states|\busa\b|\bus\b|california|texas|florida|new york|chicago|los angeles|san francisco|seattle|grady county|boston|austin|dallas|houston|atlanta|miami|denver|philadelphia|washington dc|virginia|ohio|illinois|pennsylvania|north carolina|georgia|michigan)\b/i,
+  /\b(canada|toronto|vancouver|montreal|ottawa|calgary|edmonton|germany|berlin|munich|frankfurt|hamburg|cologne|france|paris|lyon|marseille|netherlands|amsterdam|rotterdam|spain|madrid|barcelona|italy|rome|milan|australia|sydney|melbourne|brisbane|perth|ireland|dublin|cork|india|bangalore|mumbai|delhi|hyderabad|singapore|south africa|johannesburg|cape town|new zealand|auckland|wellington|brazil|sao paulo|rio de janeiro|mexico|mexico city|russia|moscow|poland|warsaw|switzerland|zurich|geneva|belgium|brussels|austria|vienna)\b/i,
+];
+
+/**
+ * Authoritative location evaluator for JobHunter-AI.
+ * Returns detailed classification and structured rationale.
+ */
+export function evaluateLocationCompatibility(
+  locationStr?: string | null,
+  title?: string,
+  description?: string,
+): LocationEvaluationResult {
+  const loc = (locationStr || "").toLowerCase().trim();
+  const context = `${loc} ${title || ""} ${description || ""}`.toLowerCase();
+
+  const isExplicitRemote =
+    /\b(remote|work from home|telecommute|عمل عن بعد|عن بعد)\b/i.test(loc) ||
+    /\b(remote - egypt|egypt remote|remote cairo|remote, egypt|remote in egypt)\b/i.test(context);
+
+  const isExplicitHybrid =
+    /\b(hybrid|هجين)\b/i.test(loc) ||
+    /\b(hybrid - egypt|egypt hybrid|hybrid cairo|hybrid, egypt)\b/i.test(context);
+
+  const hasEgyptInLocation = EGYPT_LOCATION_PATTERNS.some((p) => p.test(loc));
+  const hasEgyptInContext = EGYPT_LOCATION_PATTERNS.some((p) => p.test(context));
+  const hasForeignInLocation = FOREIGN_LOCATION_PATTERNS.some((p) => p.test(loc));
+  const hasForeignInContext = FOREIGN_LOCATION_PATTERNS.some((p) => p.test(context));
+
+  // 1. Explicit Egypt Local match in location string
+  if (hasEgyptInLocation && !hasForeignInLocation) {
+    if (isExplicitHybrid) {
+      return {
+        isCompatible: true,
+        classification: "EGYPT_HYBRID",
+        matchedLocation: locationStr || "Egypt",
+        reason: "Valid hybrid role located in Egypt.",
+      };
+    }
+    return {
+      isCompatible: true,
+      classification: "EGYPT_LOCAL",
+      matchedLocation: locationStr || "Egypt",
+      reason: "Valid Egyptian city/governorate matching candidate location.",
+    };
+  }
+
+  // 2. Explicit Foreign location without Egypt remote eligibility
+  if (hasForeignInLocation && !isExplicitRemote) {
+    return {
+      isCompatible: false,
+      classification: "FOREIGN_REJECTED",
+      matchedLocation: locationStr || "Foreign",
+      reason: `Role located in foreign market (${locationStr}) without Egypt remote eligibility.`,
+    };
+  }
+
+  // 3. Remote / Work-from-Home cases
+  if (isExplicitRemote) {
+    // If it mentions a foreign country with strict on-site requirement, reject
+    if (hasForeignInLocation && /\b(must reside in|must be based in|only uk|only us|us only|uk only|citizens only)\b/i.test(context)) {
+      return {
+        isCompatible: false,
+        classification: "FOREIGN_REJECTED",
+        matchedLocation: locationStr || "Foreign Remote",
+        reason: "Remote role restricted to foreign residents/citizens.",
+      };
+    }
+    return {
+      isCompatible: true,
+      classification: "EGYPT_REMOTE",
+      matchedLocation: locationStr || "Remote",
+      reason: "Legitimate remote position accessible to an Egypt-based candidate.",
+    };
+  }
+
+  // 4. Hybrid without explicit foreign conflict
+  if (isExplicitHybrid && (hasEgyptInContext || !hasForeignInContext)) {
+    return {
+      isCompatible: true,
+      classification: "EGYPT_HYBRID",
+      matchedLocation: locationStr || "Hybrid (Egypt)",
+      reason: "Hybrid role compatible with Egypt candidate.",
+    };
+  }
+
+  // 5. Fallback context checks if locationStr is missing or generic
+  if (!loc || loc === "unknown" || loc === "n/a") {
+    if (hasEgyptInContext && !hasForeignInContext) {
+      return {
+        isCompatible: true,
+        classification: "EGYPT_LOCAL",
+        matchedLocation: "Egypt (Context)",
+        reason: "Egypt location inferred from vacancy title/description.",
+      };
+    }
+    if (hasForeignInContext && !isExplicitRemote) {
+      return {
+        isCompatible: false,
+        classification: "FOREIGN_REJECTED",
+        matchedLocation: "Foreign (Context)",
+        reason: "Foreign location detected in vacancy content.",
+      };
+    }
+    // Neutral fallback
+    return {
+      isCompatible: true,
+      classification: "UNKNOWN",
+      matchedLocation: "Egypt",
+      reason: "Location neutral; accepted into Egypt pipeline.",
+    };
+  }
+
+  // If location has foreign keywords, reject
+  if (hasForeignInLocation || hasForeignInContext) {
+    return {
+      isCompatible: false,
+      classification: "FOREIGN_REJECTED",
+      matchedLocation: locationStr || "Foreign",
+      reason: `Foreign location detected (${locationStr}).`,
+    };
+  }
+
+  return {
+    isCompatible: hasEgyptInContext || isExplicitRemote,
+    classification: hasEgyptInContext ? "EGYPT_LOCAL" : isExplicitRemote ? "EGYPT_REMOTE" : "FOREIGN_REJECTED",
+    matchedLocation: locationStr || "Egypt",
+    reason: hasEgyptInContext ? "Egypt compatible location." : "Location outside Egypt target scope.",
+  };
+}
+
 /**
  * Strict Location Gate for Nayera Tarek (based in Roxy, Heliopolis, Cairo, Egypt).
- * Allowed: Egypt, Cairo, Giza, Alexandria, Heliopolis, Nasr City, New Cairo, Greater Cairo, 6th of October, Maadi, Zamalek, Dokki, Mohandessin, etc.
- * Foreign jobs (UK, London, Europe, USA, etc.) without explicit Egypt remote eligibility are rejected.
+ * Allowed: Egypt, Cairo, Giza, Alexandria, Heliopolis, Nasr City, New Cairo, Greater Cairo, 6th of October, Maadi, Zamalek, Dokki, Mohandessin, Smart Village, etc.
+ * Foreign jobs (UK, London, Europe, USA, etc.) without explicit Egypt remote eligibility are strictly rejected.
  */
 export function isEgyptLocationCompatible(
   locationStr?: string | null,
   title?: string,
   description?: string,
 ): boolean {
-  if (!locationStr || typeof locationStr !== "string") {
-    const text = `${title || ""} ${description || ""}`.toLowerCase();
-    if (/\b(egypt|cairo|giza|alexandria|heliopolis|nasr city|مصر|القاهرة|الجيزة)\b/i.test(text)) return true;
-    if (/\b(london|united kingdom|\buk\b|england|scotland|wales|usa|united states|germany|france|australia|dubai|uae|saudi|riyadh)\b/i.test(text)) return false;
-    return true; // default allowable if completely neutral
-  }
-
-  const loc = locationStr.toLowerCase().trim();
-
-  // 1. Check for explicit Egypt locations & Governorates
-  const EGYPT_PATTERNS = [
-    /\b(egypt|cairo|giza|greater cairo|new cairo|heliopolis|nasr city|alexandria|alex|6th of october|sheikh zayed|maadi|zamalek|dokki|mohandessin|tagamoa|shorouk|obour|rehab|banha|menoufia|tanta|mansoura|assiut|hurghada|sharm)\b/i,
-    /(مصر|القاهرة|الجيزة|مصر الجديدة|مدينة نصر|التجمع|الاسكندرية|الشيخ زايد|أكتوبر|المعادي|المهندسين|الدقي|بنها|المنوفية|طنطا|المنصورة|أسيوط)/,
-  ];
-
-  const hasEgyptKeyword = EGYPT_PATTERNS.some((p) => p.test(loc));
-
-  // 2. Check for explicit Foreign / Incompatible countries or cities
-  const FOREIGN_PATTERNS = [
-    /\b(united kingdom|\buk\b|london|england|scotland|wales|belfast|peterborough|manchester|birmingham|leeds|bristol|buckinghamshire|surrey|kent|newcastle|wales|newport|islington|chelsea|kensington|high wycombe|west midlands|tyne & wear|essex|cambridgeshire|ely|woodston|wallsend|esher|edinburgh|glasgow)\b/i,
-    /\b(united states|\busa\b|\bus\b|california|texas|florida|new york|chicago|los angeles|san francisco|seattle|grady county)\b/i,
-    /\b(canada|toronto|vancouver|montreal|germany|berlin|munich|frankfurt|france|paris|netherlands|amsterdam|spain|madrid|barcelona|italy|rome|milan|australia|sydney|melbourne|ireland|dublin|india|singapore|south africa|johannesburg|new zealand)\b/i,
-  ];
-
-  const hasForeignKeyword = FOREIGN_PATTERNS.some((p) => p.test(loc));
-
-  // 3. Handle Remote / Hybrid
-  const isRemote = /\b(remote|hybrid|work from home|telecommute)\b/i.test(loc) || /\b(remote - egypt|egypt remote|remote cairo)\b/i.test(loc);
-
-  if (hasEgyptKeyword) {
-    return true;
-  }
-
-  if (hasForeignKeyword) {
-    return false;
-  }
-
-  if (isRemote) {
-    return true;
-  }
-
-  return false;
+  return evaluateLocationCompatibility(locationStr, title, description).isCompatible;
 }
 
 /**

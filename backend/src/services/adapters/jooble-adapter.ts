@@ -1,6 +1,7 @@
 import { EmploymentType, type JobSourceRecord } from "../../store/db-store.js";
 import { classifyJobCategories } from "../categories/job-category.js";
 import { extractExternalJobId, normalizeUrl } from "../deduplication-service.js";
+import { isEgyptLocationCompatible } from "../eligibility-service.js";
 import {
   createTimeoutController,
   isTimeoutError,
@@ -138,11 +139,19 @@ export class JoobleAdapter implements JobSourceAdapter {
       const data = (await response.json()) as any;
       const rawJobs: any[] = Array.isArray(data.jobs) ? data.jobs : [];
 
-      const normalizedJobs: NormalizedJob[] = rawJobs.map((item) => {
+      const isEgyptSearch = isEgyptLocationCompatible(location);
+      const normalizedJobs: NormalizedJob[] = [];
+
+      for (const item of rawJobs) {
         const title = (item.title || "Job Opening").trim();
         const description = (item.snippet || item.description || title).trim();
         const companyName = (item.company || "Direct Employer").trim();
-        const jobLocation = item.location || location;
+        const jobLocation = (item.location || location).trim();
+
+        if (isEgyptSearch && !isEgyptLocationCompatible(jobLocation, title, description)) {
+          continue;
+        }
+
         const sourceUrl = item.link || undefined;
         const externalId = (item.id ? String(item.id) : null) || extractExternalJobId(sourceUrl);
         const canonicalUrl = normalizeUrl(sourceUrl) || (externalId ? `https://jooble.org/desc/${externalId}` : sourceUrl);
@@ -150,7 +159,7 @@ export class JoobleAdapter implements JobSourceAdapter {
         const employmentType = this.mapEmploymentType(item.type);
         const categories = classifyJobCategories(title, description);
 
-        return {
+        normalizedJobs.push({
           externalJobId: externalId || undefined,
           title,
           companyName,
@@ -166,8 +175,8 @@ export class JoobleAdapter implements JobSourceAdapter {
             type: item.type,
             source: "jooble",
           },
-        };
-      });
+        });
+      }
 
       return {
         status: "SUCCESS",

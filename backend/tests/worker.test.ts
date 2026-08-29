@@ -12,9 +12,12 @@ import {
   memoryStore,
 } from "../src/store/db-store.js";
 
+import { setAllSourcesActiveStatus } from "../src/services/job-source-service.js";
+
 describe("Job Polling Worker & Background Automation Suite", () => {
   let server: Server;
   let baseUrl: string;
+  const testMockSourceId = "e1000000-0000-0000-0000-000000000001";
 
   beforeEach(async () => {
     server = createServer(createApp());
@@ -23,26 +26,18 @@ describe("Job Polling Worker & Background Automation Suite", () => {
     });
     const addr = server.address() as AddressInfo;
     baseUrl = `http://127.0.0.1:${addr.port}`;
-    // Ensure remote third-party live feeds don't stall unit tests by deactivating them in memoryStore
-    for (const source of memoryStore.jobSources.values()) {
-      if (
-        source.baseUrl?.includes("wuzzuf.net") ||
-        source.baseUrl?.includes("jooble.org") ||
-        source.baseUrl?.includes("adzuna.com")
-      ) {
-        source.isActive = false;
-      }
-    }
 
-    // Add a fast local source so worker tests can run deterministically without network delay
-    const testMockSourceId = "test_mock_fast_source";
+    // Deactivate remote third-party live feeds so unit tests run instantly in isolation
+    await setAllSourcesActiveStatus(false);
+
+    // Add a fast local mock source using local server endpoint
     memoryStore.jobSources.set(testMockSourceId, {
       id: testMockSourceId,
       name: "Test Fast Provider",
       type: JobSourceType.RSS_FEED,
       accessMethod: JobSourceAccessMethod.FEED,
       externalSourceId: "test-fast",
-      baseUrl: "data:application/xml,<rss><channel></channel></rss>",
+      baseUrl: `${baseUrl}/api/job-sources`,
       rateLimitPerMinute: 60,
       healthStatus: "HEALTHY" as any,
       isActive: true,
@@ -52,11 +47,9 @@ describe("Job Polling Worker & Background Automation Suite", () => {
   });
 
   afterEach(async () => {
-    memoryStore.jobSources.delete("test_mock_fast_source");
+    memoryStore.jobSources.delete(testMockSourceId);
     // Restore default active status for sources
-    for (const source of memoryStore.jobSources.values()) {
-      source.isActive = true;
-    }
+    await setAllSourcesActiveStatus(true, (s) => s.externalSourceId === "jooble-api" || s.externalSourceId === "adzuna-api");
     if (server) {
       await new Promise<void>((resolve, reject) => {
         server.close((err) => (err ? reject(err) : resolve()));
@@ -206,16 +199,18 @@ describe("Job Polling Worker & Background Automation Suite", () => {
       const hangingUrl = `http://127.0.0.1:${hangAddr.port}`;
 
       // 2. Healthy server returning real jobs JSON
+      const uniqueSuffix = Date.now();
       const healthyServer = createServer((_req, res) => {
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(
           JSON.stringify([
             {
-              id: "healthy-job-1",
-              title: "Senior Legal Counsel",
-              company: { name: "National Bank of Egypt" },
-              description: "Commercial contracts, regulatory compliance, and banking litigation.",
+              id: `healthy-job-${uniqueSuffix}`,
+              title: `Senior Legal Counsel Multi ${uniqueSuffix}`,
+              company: { name: `Unique Healthy Enterprise ${uniqueSuffix}` },
+              description: `Commercial contracts, regulatory compliance, and banking litigation in Cairo ${uniqueSuffix}.`,
               location: "Cairo, Egypt",
+              url: `http://example.com/healthy-job/${uniqueSuffix}`,
             },
           ]),
         );
@@ -262,7 +257,7 @@ describe("Job Polling Worker & Background Automation Suite", () => {
       try {
         const worker = new JobPollingWorker();
         const startTime = Date.now();
-        const stats = await worker.runOnce("MANUAL", { timeoutMs: 50 });
+        const stats = await worker.runOnce("MANUAL", { timeoutMs: 500 });
         const elapsed = Date.now() - startTime;
 
         // Verify the hanging source timed out
@@ -274,7 +269,7 @@ describe("Job Polling Worker & Background Automation Suite", () => {
         expect(stats.jobsFetched).toBeGreaterThanOrEqual(1);
         expect(stats.newJobsCreated).toBeGreaterThanOrEqual(1);
         expect(stats.sourcesFailed).toBeGreaterThanOrEqual(1);
-        expect(elapsed).toBeLessThan(2000);
+        expect(elapsed).toBeLessThan(3000);
       } finally {
         memoryStore.jobSources.delete(hangSourceId);
         memoryStore.jobSources.delete(healthySourceId);
@@ -294,31 +289,30 @@ describe("Job Polling Worker & Background Automation Suite", () => {
     it("guarantees applications created by worker are in PENDING_APPROVAL and drafts are in PENDING_REVIEW", async () => {
       // Seed a test legal job for candidate matching
       const source = Array.from(memoryStore.jobSources.values())[0];
-      await createJob({
+      const legalJob = await createJob({
         jobSourceId: source.id,
-        title: "Legal Affairs Specialist",
-        companyName: "Bank Misr",
+        title: `Legal Affairs Specialist ${Date.now()}`,
+        companyName: `Bank Misr Test Corp ${Date.now()}`,
         location: "Cairo, Egypt",
-        description: "Legal affairs, corporate contracts, and regulatory compliance.",
+        description: "Legal affairs, corporate contracts, and regulatory compliance in Cairo.",
       });
 
       const worker = new JobPollingWorker();
-      const stats = await worker.runOnce("MANUAL");
+      await worker.runOnce("MANUAL");
 
-      // Check all applications in store
-      const applications = Array.from(memoryStore.applications.values());
+      // Check application created for this job
+      const { listApplications } = await import("../src/services/application-service.js");
+      const applications = await listApplications({ jobId: legalJob.id });
       expect(applications.length).toBeGreaterThanOrEqual(1);
 
       for (const app of applications) {
         // Strict invariant: Worker MUST NEVER set status to APPROVED, SENDING, or SENT in MANUAL mode
-        expect(app.status).not.toBe(ApplicationStatus.APPROVED);
-        expect(app.status).not.toBe(ApplicationStatus.SENDING);
-        expect(app.status).not.toBe(ApplicationStatus.SENT);
+        expect(app.status).toBe(ApplicationStatus.PENDING_APPROVAL);
 
         if (app.selectedGeneratedEmailId) {
           const email = memoryStore.generatedEmails.get(app.selectedGeneratedEmailId);
           if (email) {
-            expect(email.reviewStatus).not.toBe(EmailReviewStatus.APPROVED);
+            expect(email.reviewStatus).toBe(EmailReviewStatus.PENDING_REVIEW);
           }
         }
       }

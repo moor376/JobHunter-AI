@@ -222,9 +222,16 @@ export interface DuplicateCheckInput {
   description: string;
 }
 
+export type DuplicateType =
+  | "EXTERNAL_ID"
+  | "CANONICAL_URL"
+  | "CONTENT_HASH"
+  | "NORMALIZED_IDENTITY";
+
 export interface DuplicateCheckResult {
   isDuplicate: boolean;
   duplicateOf?: JobRecord;
+  duplicateType?: DuplicateType;
   reason?: string;
 }
 
@@ -260,6 +267,7 @@ export function checkJobDuplicate(
       return {
         isDuplicate: true,
         duplicateOf: existing,
+        duplicateType: "EXTERNAL_ID",
         reason: `Matched provider ${candidate.jobSourceId} and external ID ${candidateExternalId}`,
       };
     }
@@ -271,6 +279,7 @@ export function checkJobDuplicate(
       return {
         isDuplicate: true,
         duplicateOf: existing,
+        duplicateType: "CANONICAL_URL",
         reason: `Matched normalized canonical URL: ${normCandidateUrl}`,
       };
     }
@@ -280,6 +289,7 @@ export function checkJobDuplicate(
       return {
         isDuplicate: true,
         duplicateOf: existing,
+        duplicateType: "CONTENT_HASH",
         reason: `Matched content SHA-256 hash: ${candidateHash}`,
       };
     }
@@ -298,6 +308,7 @@ export function checkJobDuplicate(
         return {
           isDuplicate: true,
           duplicateOf: existing,
+          duplicateType: "NORMALIZED_IDENTITY",
           reason: `Identical company '${existing.company?.name}' and title '${existing.title}'`,
         };
       }
@@ -308,6 +319,7 @@ export function checkJobDuplicate(
         return {
           isDuplicate: true,
           duplicateOf: existing,
+          duplicateType: "NORMALIZED_IDENTITY",
           reason: `Fuzzy title match with company '${existing.company?.name}' and title similarity ${(titleSim * 100).toFixed(0)}%`,
         };
       }
@@ -319,6 +331,7 @@ export function checkJobDuplicate(
           return {
             isDuplicate: true,
             duplicateOf: existing,
+            duplicateType: "NORMALIZED_IDENTITY",
             reason: `Fuzzy match with company '${existing.company?.name}', title sim ${(titleSim * 100).toFixed(0)}%, desc sim ${(descSim * 100).toFixed(0)}%`,
           };
         }

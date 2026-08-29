@@ -4,6 +4,7 @@ import type { JobCategory } from "../categories/job-category.js";
 export type AdapterStatus =
   | "SUCCESS"
   | "SOURCE_NOT_CONFIGURED"
+  | "CAPABILITY_UNSUPPORTED"
   | "RATE_LIMITED"
   | "NETWORK_ERROR"
   | "TIMEOUT"

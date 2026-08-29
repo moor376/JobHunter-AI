@@ -4,7 +4,7 @@ export interface SearchTrack {
   id: string;
   name: string;
   category: JobCategory;
-  priority: number; // 1 = highest priority (Legal, Compliance, Contracts)
+  priority: number;
   keywords: string[];
   arabicKeywords: string[];
   suggestedJobCategories: JobCategory[];
@@ -28,163 +28,323 @@ export interface CandidateSearchProfile {
   defaultTrackId?: string;
 }
 
-// 1. LEGAL / LEGAL AFFAIRS (Priority 1)
+/*
+ * ============================================================
+ * SEARCH TRACKS
+ * ============================================================
+ *
+ * Broad but targeted search strategy for the candidate.
+ * Multiple title variants are used to increase coverage.
+ */
+
+/* 1. LEGAL / LEGAL AFFAIRS */
 export const TRACK_LEGAL_AFFAIRS: SearchTrack = {
   id: "legal_affairs",
   name: "Legal Affairs & Corporate Counsel",
   category: JobCategory.LEGAL,
   priority: 1,
+
   keywords: [
     "Legal Affairs Egypt",
+    "Legal Counsel Egypt",
     "Legal Counsel Cairo",
     "Legal Affairs Specialist Egypt",
+    "Legal Specialist Egypt",
     "Legal Specialist Cairo",
     "Corporate Lawyer Egypt",
+    "Corporate Counsel Egypt",
+    "Legal Advisor Egypt",
     "Legal Advisor Cairo",
     "Corporate Legal Egypt",
-    "Legal Researcher Cairo",
+    "Legal Researcher Egypt",
+    "Legal Officer Egypt",
+    "Junior Legal Counsel Egypt",
+    "Legal Executive Egypt",
+    "In House Counsel Egypt",
+    "In-House Legal Egypt",
+    "Paralegal Egypt",
+    "Legal Coordinator Egypt",
+    "Legal Administrator Egypt",
   ],
+
   arabicKeywords: [
-    "وظائف شؤون قانونية مصر",
-    "شؤون قانونية القاهرة",
-    "وظائف قانونية مصر",
-    "مستشار قانوني القاهرة",
+    "شؤون قانونية مصر",
+    "مستشار قانوني مصر",
     "محامي شركات مصر",
-    "إدارة قانونية القاهرة",
+    "أخصائي قانوني مصر",
+    "مسؤول قانوني مصر",
+    "باحث قانوني مصر",
+    "إدارة قانونية مصر",
   ],
-  suggestedJobCategories: [JobCategory.LEGAL],
+
+  suggestedJobCategories: [
+    JobCategory.LEGAL,
+  ],
 };
 
-// 2. COMPLIANCE (Priority 1)
+/* 2. COMPLIANCE / GOVERNANCE */
 export const TRACK_COMPLIANCE: SearchTrack = {
   id: "compliance",
   name: "Regulatory Compliance & Governance",
   category: JobCategory.COMPLIANCE,
   priority: 1,
+
   keywords: [
     "Compliance Officer Egypt",
-    "Regulatory Compliance Cairo",
     "Compliance Specialist Egypt",
-    "AML Compliance Cairo",
+    "Compliance Officer Cairo",
+    "Regulatory Compliance Egypt",
+    "Regulatory Compliance Cairo",
+    "Compliance Analyst Egypt",
+    "AML Compliance Egypt",
+    "AML Analyst Egypt",
     "KYC Compliance Egypt",
+    "KYC Analyst Egypt",
+    "Financial Crime Compliance Egypt",
+    "Risk Compliance Egypt",
+    "Regulatory Affairs Egypt",
     "Regulatory Affairs Cairo",
+    "Governance Specialist Egypt",
+    "Corporate Governance Egypt",
+    "Internal Compliance Egypt",
+    "Compliance Associate Egypt",
+    "Compliance Manager Egypt",
   ],
+
   arabicKeywords: [
-    "وظائف امتثال مصر",
-    "امتثال القاهرة",
-    "شؤون تنظيمية مصر",
+    "امتثال مصر",
+    "مسؤول امتثال مصر",
+    "أخصائي امتثال مصر",
     "مكافحة غسل الأموال مصر",
+    "اعرف عميلك مصر",
+    "شؤون تنظيمية مصر",
+    "حوكمة الشركات مصر",
   ],
-  suggestedJobCategories: [JobCategory.COMPLIANCE, JobCategory.REGULATORY],
+
+  suggestedJobCategories: [
+    JobCategory.COMPLIANCE,
+    JobCategory.REGULATORY,
+  ],
 };
 
-// 3. CONTRACTS (Priority 1)
+/* 3. CONTRACTS */
 export const TRACK_CONTRACTS: SearchTrack = {
   id: "contracts",
   name: "Contracts & Commercial Agreements",
   category: JobCategory.CONTRACTS,
   priority: 1,
+
   keywords: [
     "Contracts Specialist Egypt",
+    "Contract Specialist Egypt",
+    "Contract Management Egypt",
     "Contract Management Cairo",
-    "Commercial Contracts Egypt",
+    "Contracts Administrator Egypt",
     "Contracts Administrator Cairo",
+    "Commercial Contracts Egypt",
+    "Commercial Contract Specialist Egypt",
+    "Contract Analyst Egypt",
+    "Contract Coordinator Egypt",
+    "Contract Officer Egypt",
     "Contract Drafting Egypt",
+    "Contract Review Egypt",
+    "Commercial Agreements Egypt",
+    "Legal Contracts Egypt",
+    "Contract Compliance Egypt",
+    "Contract Negotiation Egypt",
+    "Contracts Manager Egypt",
   ],
+
   arabicKeywords: [
-    "وظائف عقود القاهرة",
+    "وظائف عقود مصر",
+    "أخصائي عقود مصر",
     "إدارة عقود مصر",
+    "مراجعة عقود مصر",
     "صياغة عقود مصر",
-    "مراجعة عقود القاهرة",
+    "مسؤول عقود مصر",
   ],
-  suggestedJobCategories: [JobCategory.CONTRACTS, JobCategory.LEGAL],
+
+  suggestedJobCategories: [
+    JobCategory.CONTRACTS,
+    JobCategory.LEGAL,
+  ],
 };
 
-// 4. BANKING (Priority 2)
+/* 4. BANKING / FINANCE */
 export const TRACK_BANKING: SearchTrack = {
   id: "banking",
   name: "Banking & Financial Operations",
   category: JobCategory.BANKING,
   priority: 2,
+
   keywords: [
+    "Banking Egypt",
     "Banking Cairo",
     "Banking Officer Egypt",
-    "Branch Banking Cairo",
     "Banking Operations Egypt",
-    "Retail Banking Cairo",
+    "Banking Operations Cairo",
+    "Retail Banking Egypt",
+    "Branch Banking Egypt",
+    "Relationship Officer Bank Egypt",
+    "Customer Service Bank Egypt",
+    "Banking Specialist Egypt",
+    "Banking Associate Egypt",
+    "Credit Officer Egypt",
+    "Credit Analyst Egypt",
+    "Financial Operations Egypt",
+    "Banking Administration Egypt",
+    "Back Office Banking Egypt",
+    "Banking Support Egypt",
   ],
+
   arabicKeywords: [
     "وظائف بنوك مصر",
-    "عمليات بنكية القاهرة",
+    "عمليات بنكية مصر",
+    "خدمة عملاء بنك مصر",
+    "موظف بنك مصر",
+    "عمليات مصرفية مصر",
     "خدمات مصرفية مصر",
   ],
-  suggestedJobCategories: [JobCategory.BANKING, JobCategory.FINANCE],
+
+  suggestedJobCategories: [
+    JobCategory.BANKING,
+    JobCategory.FINANCE,
+  ],
 };
 
-// 5. BANKING SALES / TELE-SALES (Priority 2)
+/* 5. BANKING SALES / TELESALES */
 export const TRACK_BANKING_SALES: SearchTrack = {
   id: "banking_sales",
   name: "Banking Sales & Outbound Telesales",
   category: JobCategory.SALES,
   priority: 2,
+
   keywords: [
     "Banking Sales Egypt",
+    "Banking Sales Cairo",
+    "Telesales Egypt",
     "Telesales Cairo",
     "Banking Tele-Sales Egypt",
+    "Outbound Sales Egypt",
     "Outbound Sales Cairo",
+    "Sales Representative Egypt",
+    "Sales Representative Cairo",
     "Retail Sales Officer Egypt",
+    "Relationship Manager Bank Egypt",
+    "Relationship Officer Bank Egypt",
+    "Inside Sales Egypt",
+    "Call Center Sales Egypt",
+    "Telemarketing Egypt",
+    "Direct Sales Egypt",
+    "Business Development Sales Egypt",
   ],
+
   arabicKeywords: [
     "مبيعات بنكية مصر",
+    "تلي سيلز مصر",
     "تلي سيلز القاهرة",
-    "تسويق هاتفي بنوك مصر",
-    "مسؤول مبيعات بنوك القاهرة",
+    "مبيعات هاتفية مصر",
+    "مبيعات بنوك مصر",
+    "موظف مبيعات بنك مصر",
   ],
-  suggestedJobCategories: [JobCategory.SALES, JobCategory.BANKING],
+
+  suggestedJobCategories: [
+    JobCategory.SALES,
+    JobCategory.BANKING,
+  ],
 };
 
-// 6. CUSTOMER RELATIONS (Priority 3)
+/* 6. CUSTOMER RELATIONS / CUSTOMER SERVICE */
 export const TRACK_CUSTOMER_RELATIONS: SearchTrack = {
   id: "customer_relations",
   name: "Customer Relations & Client Management",
   category: JobCategory.CUSTOMER_SERVICE,
   priority: 3,
+
   keywords: [
+    "Customer Relations Egypt",
     "Customer Relations Cairo",
-    "Relationship Officer Egypt",
+    "Customer Service Egypt",
     "Customer Service Cairo",
+    "Customer Care Egypt",
+    "Customer Support Egypt",
+    "Client Relations Egypt",
+    "Client Service Egypt",
     "Client Handling Egypt",
-    "Relationship Manager Cairo",
+    "Relationship Officer Egypt",
+    "Relationship Manager Egypt",
+    "Account Coordinator Egypt",
+    "Account Executive Egypt",
+    "Customer Success Egypt",
+    "Customer Experience Egypt",
+    "Call Center Representative Egypt",
+    "Customer Support Specialist Egypt",
   ],
+
   arabicKeywords: [
+    "خدمة عملاء مصر",
     "خدمة عملاء القاهرة",
     "علاقات عملاء مصر",
-    "مسؤول علاقات القاهرة",
+    "مسؤول خدمة عملاء مصر",
+    "دعم العملاء مصر",
+    "علاقات العملاء مصر",
   ],
-  suggestedJobCategories: [JobCategory.CUSTOMER_SERVICE, JobCategory.SALES],
+
+  suggestedJobCategories: [
+    JobCategory.CUSTOMER_SERVICE,
+    JobCategory.SALES,
+  ],
 };
 
-// 7. RECRUITMENT / HR (Priority 3)
+/* 7. RECRUITMENT / HR */
 export const TRACK_RECRUITMENT_HR: SearchTrack = {
   id: "recruitment_hr",
   name: "Recruitment & Talent Acquisition Management",
   category: JobCategory.RECRUITMENT,
   priority: 3,
+
   keywords: [
+    "Recruitment Specialist Egypt",
     "Recruitment Specialist Cairo",
-    "HR Specialist Egypt",
+    "Recruiter Egypt",
+    "Recruiter Cairo",
+    "Talent Acquisition Egypt",
     "Talent Acquisition Cairo",
-    "Recruitment Manager Cairo",
+    "HR Specialist Egypt",
+    "HR Specialist Cairo",
+    "HR Recruiter Egypt",
+    "Technical Recruiter Egypt",
+    "Recruitment Coordinator Egypt",
+    "Recruitment Officer Egypt",
+    "Recruitment Manager Egypt",
+    "Talent Acquisition Specialist Egypt",
     "Employee Relations Egypt",
+    "Human Resources Egypt",
+    "HR Coordinator Egypt",
+    "HR Generalist Egypt",
   ],
+
   arabicKeywords: [
-    "وظائف موارد بشرية القاهرة",
+    "وظائف موارد بشرية مصر",
     "وظائف توظيف مصر",
-    "استقطاب مواهب القاهرة",
-    "مسؤول موارد بشرية مصر",
+    "أخصائي توظيف مصر",
+    "مسؤول توظيف مصر",
+    "استقطاب مواهب مصر",
+    "موارد بشرية القاهرة",
+    "توظيف القاهرة",
   ],
-  suggestedJobCategories: [JobCategory.RECRUITMENT, JobCategory.HR],
+
+  suggestedJobCategories: [
+    JobCategory.RECRUITMENT,
+    JobCategory.HR,
+  ],
 };
+
+/*
+ * ============================================================
+ * MASTER PROFILE
+ * ============================================================
+ */
 
 export const NAYERA_CAREER_TRACKS: SearchTrack[] = [
   TRACK_LEGAL_AFFAIRS,
@@ -201,6 +361,13 @@ export const NAYERA_TARGET_LOCATIONS: string[] = [
   "Cairo",
   "Giza",
   "Alexandria",
+  "New Cairo",
+  "Heliopolis",
+  "Nasr City",
+  "Maadi",
+  "6th of October",
+  "Sheikh Zayed",
+  "Smart Village",
   "Remote",
   "Hybrid",
 ];
@@ -213,57 +380,112 @@ export const DEFAULT_NAYERA_SEARCH_PROFILE: CandidateSearchProfile = {
   tracks: NAYERA_CAREER_TRACKS,
 };
 
-/**
- * Returns all distinct search keywords across all 7 career tracks.
+/*
+ * ============================================================
+ * KEYWORD HELPERS
+ * ============================================================
  */
+
 export function getAllSearchKeywords(): string[] {
   const keywordsSet = new Set<string>();
+
   for (const track of NAYERA_CAREER_TRACKS) {
-    track.keywords.forEach((k) => keywordsSet.add(k));
-    track.arabicKeywords.forEach((k) => keywordsSet.add(k));
+    for (const keyword of track.keywords) {
+      const normalized = keyword.trim();
+
+      if (normalized) {
+        keywordsSet.add(normalized);
+      }
+    }
+
+    for (const keyword of track.arabicKeywords) {
+      const normalized = keyword.trim();
+
+      if (normalized) {
+        keywordsSet.add(normalized);
+      }
+    }
   }
+
   return Array.from(keywordsSet);
 }
 
-/**
- * Generates an expanded, prioritized search query plan for Nayera Tarek.
- * Priority 1 (Legal, Compliance, Contracts) queries appear first, followed by
- * Priority 2 (Banking, Telesales) and Priority 3 (Customer Relations, HR).
+/*
+ * ============================================================
+ * SEARCH PLAN
+ * ============================================================
+ *
+ * Default:
+ * - 5 English queries per track
+ * - 2 Arabic queries per track
+ *
+ * Priority 1 tracks run first.
  */
+
 export function getNayeraSearchPlan(options?: {
   maxQueriesPerTrack?: number;
+  maxArabicQueriesPerTrack?: number;
   primaryLocationOnly?: boolean;
 }): SearchQueryItem[] {
-  const maxPerTrack = options?.maxQueriesPerTrack ?? 2;
+  const maxEnglish =
+    options?.maxQueriesPerTrack ?? 5;
+
+  const maxArabic =
+    options?.maxArabicQueriesPerTrack ?? 2;
+
+  /*
+   * The current profile is Egypt-first.
+   * The provider receives "Egypt" as the primary location.
+   */
   const location = "Egypt";
+
   const plan: SearchQueryItem[] = [];
 
-  // Sort tracks by priority (1 = highest)
-  const sortedTracks = [...NAYERA_CAREER_TRACKS].sort((a, b) => a.priority - b.priority);
+  /*
+   * Priority ordering:
+   * 1 = Legal / Compliance / Contracts
+   * 2 = Banking / Banking Sales
+   * 3 = Customer Relations / Recruitment
+   */
+  const sortedTracks = [...NAYERA_CAREER_TRACKS].sort(
+    (a, b) => a.priority - b.priority,
+  );
 
   for (const track of sortedTracks) {
-    // English queries for this track
-    const enSelected = track.keywords.slice(0, maxPerTrack);
-    for (const q of enSelected) {
+    /*
+     * English queries
+     */
+    const englishQueries = track.keywords
+      .map((query) => query.trim())
+      .filter(Boolean)
+      .slice(0, maxEnglish);
+
+    for (const query of englishQueries) {
       plan.push({
         trackId: track.id,
         trackName: track.name,
         category: track.category,
-        query: q,
+        query,
         language: "en",
         location,
         priority: track.priority,
       });
     }
 
-    // Arabic query for this track
-    const arSelected = track.arabicKeywords.slice(0, 1);
-    for (const q of arSelected) {
+    /*
+     * Arabic queries
+     */
+    const arabicQueries = track.arabicKeywords
+      .map((query) => query.trim())
+      .filter(Boolean)
+      .slice(0, maxArabic);
+
+    for (const query of arabicQueries) {
       plan.push({
         trackId: track.id,
         trackName: track.name,
         category: track.category,
-        query: q,
+        query,
         language: "ar",
         location,
         priority: track.priority,
@@ -271,5 +493,59 @@ export function getNayeraSearchPlan(options?: {
     }
   }
 
-  return plan;
+  /*
+   * Remove duplicate query/location combinations.
+   */
+  const seen = new Set<string>();
+
+  return plan.filter((item) => {
+    const key =
+      `${item.language}|${item.query.toLowerCase()}|${item.location.toLowerCase()}`;
+
+    if (seen.has(key)) {
+      return false;
+    }
+
+    seen.add(key);
+    return true;
+  });
+}
+
+/*
+ * ============================================================
+ * SEARCH PLAN SUMMARY
+ * ============================================================
+ */
+
+export function getSearchPlanSummary(): {
+  totalQueries: number;
+  englishQueries: number;
+  arabicQueries: number;
+  priority1Queries: number;
+  priority2Queries: number;
+  priority3Queries: number;
+} {
+  const plan = getNayeraSearchPlan({
+    maxQueriesPerTrack: 5,
+    maxArabicQueriesPerTrack: 2,
+  });
+
+  return {
+    totalQueries: plan.length,
+    englishQueries: plan.filter(
+      (item) => item.language === "en",
+    ).length,
+    arabicQueries: plan.filter(
+      (item) => item.language === "ar",
+    ).length,
+    priority1Queries: plan.filter(
+      (item) => item.priority === 1,
+    ).length,
+    priority2Queries: plan.filter(
+      (item) => item.priority === 2,
+    ).length,
+    priority3Queries: plan.filter(
+      (item) => item.priority === 3,
+    ).length,
+  };
 }
