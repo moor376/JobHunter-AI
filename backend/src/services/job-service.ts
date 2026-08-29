@@ -220,13 +220,19 @@ export async function listJobs(filters: JobFilterParams = {}): Promise<JobRecord
     };
   });
 
+  const safeSort = (a: JobRecord, b: JobRecord) => {
+    const timeA = a.seenAt ? new Date(a.seenAt).getTime() : a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const timeB = b.seenAt ? new Date(b.seenAt).getTime() : b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return timeB - timeA;
+  };
+
   if (categoryFilter) {
     return mapped
       .filter((j) => j.categories?.some((c) => c.toUpperCase() === categoryFilter))
-      .sort((a, b) => b.seenAt.getTime() - a.seenAt.getTime());
+      .sort(safeSort);
   }
 
-  return mapped.sort((a, b) => b.seenAt.getTime() - a.seenAt.getTime());
+  return mapped.sort(safeSort);
 }
 
 export async function getJobById(id: string): Promise<JobRecord> {

@@ -56,6 +56,20 @@ const approveBodySchema = z
   })
   .strict();
 
+const approvePreparedBodySchema = z
+  .object({
+    forceApprove: z.boolean().optional(),
+    skipFreshnessCheck: z.boolean().optional(),
+    notes: z.string().trim().max(1000).optional(),
+  })
+  .strict();
+
+const rejectPreparedBodySchema = z
+  .object({
+    reason: z.string().trim().max(1000).optional(),
+  })
+  .strict();
+
 const replyBodySchema = z
   .object({
     providerMessageId: z.string().trim().optional(),
@@ -69,8 +83,8 @@ const applicationRouter = Router();
 applicationRouter.get("/prepared", getPreparedApplications);
 applicationRouter.post("/prepared/verify-all-freshness", postVerifyAllFreshness);
 applicationRouter.get("/prepared/:id", getPreparedApplication);
-applicationRouter.post("/prepared/:id/approve", postApprovePrepared);
-applicationRouter.post("/prepared/:id/reject", postRejectPrepared);
+applicationRouter.post("/prepared/:id/approve", validateBody(approvePreparedBodySchema), postApprovePrepared);
+applicationRouter.post("/prepared/:id/reject", validateBody(rejectPreparedBodySchema), postRejectPrepared);
 applicationRouter.post("/prepared/:id/verify-freshness", postVerifyFreshness);
 applicationRouter.post("/prepare-all", postPrepareAll);
 

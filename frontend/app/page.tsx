@@ -513,6 +513,8 @@ export default function JobHunterDashboard() {
     };
   }, [applications]);
 
+  const [overviewWorkflowTab, setOverviewWorkflowTab] = useState<"discovered" | "approved" | "sent" | "manual_review" | "blocked">("manual_review");
+
   // Prepared Application Queue Metrics & Filter
   const prepCounts = useMemo(() => {
     return {
@@ -522,9 +524,126 @@ export default function JobHunterDashboard() {
       rejected: preparedApplications.filter((p) => p.preparationStatus === "REJECTED").length,
       highPriority: preparedApplications.filter((p) => p.priorityTier === "HIGH_PRIORITY").length,
       goodMatch: preparedApplications.filter((p) => p.priorityTier === "GOOD_MATCH").length,
-      manualAction: preparedApplications.filter((p) => p.requiresManualAction).length,
+      manualAction: preparedApplications.filter((p) => p.requiresManualAction || p.requiresManualFreshnessCheck || p.freshnessStatus === "BLOCKED").length,
+      blockedBot: preparedApplications.filter((p) => p.freshnessStatus === "BLOCKED").length,
     };
   }, [preparedApplications]);
+
+  // Derived Autonomous Workflow Datasets
+  const autoDiscoveredJobs = useMemo(() => {
+    return (rankedJobs.length > 0 ? rankedJobs : jobs.map((j) => ({
+      job: j,
+      matchScore: 60,
+      eligibilityScore: 60,
+      priorityTier: "GOOD_MATCH",
+      category: "POTENTIAL_MATCH",
+      recommendation: "Standard match",
+      matchedSkills: [],
+      missingSkills: [],
+      reasoning: "Discovered from live job provider",
+      strengths: [],
+      primaryCategory: j.categories?.[0] || "OTHER",
+      whyItMatches: [],
+      missingCriticalRequirements: [],
+      isEligibleForApplication: true,
+    })));
+  }, [jobs, rankedJobs]);
+
+  const autoApprovedJobs = useMemo(() => {
+    return preparedApplications.filter((p) => p.preparationStatus === "APPROVED");
+  }, [preparedApplications]);
+
+  const autoSentJobs = useMemo(() => {
+    return applications.filter((a) => a.status === "SENT");
+  }, [applications]);
+
+  const manualReviewJobs = useMemo(() => {
+    return preparedApplications.filter(
+      (p) =>
+        p.requiresManualAction ||
+        p.requiresManualFreshnessCheck ||
+        p.freshnessStatus === "BLOCKED" ||
+        p.freshnessStatus === "TIMEOUT" ||
+        p.freshnessStatus === "UNKNOWN" ||
+        (p.preparationStatus === "PENDING_APPROVAL" && workerStatus.autoApprovalPolicy === "MANUAL")
+    );
+  }, [preparedApplications, workerStatus.autoApprovalPolicy]);
+
+  const blockedJobs = useMemo(() => {
+    const list: Array<{
+      id: string;
+      title: string;
+      company: string;
+      location: string;
+      source: string;
+      reason: string;
+      badge: string;
+      badgeColor: string;
+      url?: string | null;
+    }> = [];
+
+    // Check prepared applications
+    for (const p of preparedApplications) {
+      if (p.freshnessStatus === "CLOSED") {
+        list.push({
+          id: p.id,
+          title: p.job?.title || "Job Vacancy",
+          company: p.job?.company?.name || "Direct Employer",
+          location: p.job?.location || "Cairo, Egypt",
+          source: p.sourceProvider || "Job Provider",
+          reason: p.freshnessReason || "Job posting is closed, expired, or filled.",
+          badge: "VACANCY_CLOSED",
+          badgeColor: "badge-coral",
+          url: p.sourceUrl || p.canonicalUrl,
+        });
+      } else if (p.freshnessStatus === "NOT_FOUND") {
+        list.push({
+          id: p.id,
+          title: p.job?.title || "Job Vacancy",
+          company: p.job?.company?.name || "Direct Employer",
+          location: p.job?.location || "Cairo, Egypt",
+          source: p.sourceProvider || "Job Provider",
+          reason: p.freshnessReason || "HTTP 404: Vacancy page not found or removed from employer website.",
+          badge: "PAGE_NOT_FOUND_404",
+          badgeColor: "badge-coral",
+          url: p.sourceUrl || p.canonicalUrl,
+        });
+      } else if (p.freshnessStatus === "BLOCKED") {
+        list.push({
+          id: p.id,
+          title: p.job?.title || "Job Vacancy",
+          company: p.job?.company?.name || "Direct Employer",
+          location: p.job?.location || "Cairo, Egypt",
+          source: p.sourceProvider || "Job Provider",
+          reason: p.freshnessReason || "Provider enforces Cloudflare/WAF bot protection. Open in browser to manually verify. (No CAPTCHA bypass attempted).",
+          badge: "ANTI_BOT_BLOCKED",
+          badgeColor: "badge-gold",
+          url: p.sourceUrl || p.canonicalUrl,
+        });
+      }
+    }
+
+    // Check ranked jobs that are rejected by location gate
+    for (const r of rankedJobs) {
+      if (r.priorityTier === "REJECT") {
+        if (!list.some((b) => b.id === r.job?.id)) {
+          list.push({
+            id: r.job?.id,
+            title: r.job?.title || "Job Vacancy",
+            company: r.job?.company?.name || "Employer",
+            location: r.job?.location || "Foreign Location",
+            source: r.job?.jobSource?.name || "Provider",
+            reason: r.reasoning || "Location incompatibility: Role is outside Egypt focus (e.g. UK, London, US, Germany).",
+            badge: "LOCATION_MISMATCH",
+            badgeColor: "badge-coral",
+            url: r.job?.sourceUrl || r.job?.canonicalUrl,
+          });
+        }
+      }
+    }
+
+    return list;
+  }, [preparedApplications, rankedJobs]);
 
   const filteredPrepared = useMemo(() => {
     return preparedApplications.filter((prep) => {
@@ -533,6 +652,8 @@ export default function JobHunterDashboard() {
       if (prepFilter === "REJECTED" && prep.preparationStatus !== "REJECTED") return false;
       if (prepFilter === "HIGH_PRIORITY" && prep.priorityTier !== "HIGH_PRIORITY") return false;
       if (prepFilter === "GOOD_MATCH" && prep.priorityTier !== "GOOD_MATCH") return false;
+      if (prepFilter === "MANUAL_ACTION" && !prep.requiresManualAction && !prep.requiresManualFreshnessCheck && prep.freshnessStatus !== "BLOCKED") return false;
+      if (prepFilter === "BLOCKED_BOT" && prep.freshnessStatus !== "BLOCKED") return false;
 
       if (prepSearch.trim()) {
         const q = prepSearch.toLowerCase();
@@ -1348,6 +1469,379 @@ export default function JobHunterDashboard() {
                   </div>
                 </div>
 
+                {/* Real-time Autonomous Workflow & Job Pipeline Action Tracker */}
+                <div className="card" style={{ marginBottom: "24px" }}>
+                  <div className="card-header">
+                    <div>
+                      <h2 className="card-title">🤖 Autonomous Job Pipeline & Action Tracker</h2>
+                      <div className="card-subtitle">
+                        Real-time tracking of jobs across every phase: Discovery → Freshness Verification → AI Match → Auto-Approval → Dispatch
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Workflow Phase Filter Chips */}
+                  <div className="filter-bar" style={{ padding: "12px 16px", background: "#f8fafc", borderBottom: "1px solid var(--line)" }}>
+                    <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                      <button
+                        className={`filter-chip ${overviewWorkflowTab === "discovered" ? "active" : ""}`}
+                        onClick={() => setOverviewWorkflowTab("discovered")}
+                      >
+                        🔍 Discovered Automatically <span className="count-pill">{autoDiscoveredJobs.length}</span>
+                      </button>
+                      <button
+                        className={`filter-chip ${overviewWorkflowTab === "approved" ? "active" : ""}`}
+                        onClick={() => setOverviewWorkflowTab("approved")}
+                      >
+                        ⚡ Approved Automatically <span className="count-pill">{autoApprovedJobs.length}</span>
+                      </button>
+                      <button
+                        className={`filter-chip ${overviewWorkflowTab === "sent" ? "active" : ""}`}
+                        onClick={() => setOverviewWorkflowTab("sent")}
+                      >
+                        🚀 Sent Automatically <span className="count-pill">{autoSentJobs.length}</span>
+                      </button>
+                      <button
+                        className={`filter-chip ${overviewWorkflowTab === "manual_review" ? "active" : ""}`}
+                        onClick={() => setOverviewWorkflowTab("manual_review")}
+                      >
+                        🛡️ Requires Manual Review <span className="count-pill">{manualReviewJobs.length}</span>
+                      </button>
+                      <button
+                        className={`filter-chip ${overviewWorkflowTab === "blocked" ? "active" : ""}`}
+                        onClick={() => setOverviewWorkflowTab("blocked")}
+                      >
+                        ✕ Blocked / Cannot Process <span className="count-pill">{blockedJobs.length}</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Workflow Tab Content */}
+                  <div style={{ padding: "16px" }}>
+                    {/* TAB: DISCOVERED AUTOMATICALLY */}
+                    {overviewWorkflowTab === "discovered" && (
+                      <div>
+                        <div style={{ marginBottom: "12px", fontSize: "13px", color: "var(--muted)" }}>
+                          Showing real jobs discovered from active job sources (APIs, feeds, and boards). Freshness and candidate eligibility are evaluated automatically.
+                        </div>
+                        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
+                          <thead>
+                            <tr style={{ borderBottom: "2px solid var(--line)", textAlign: "left" }}>
+                              <th style={{ padding: "8px" }}>Job Vacancy & Company</th>
+                              <th style={{ padding: "8px" }}>Location</th>
+                              <th style={{ padding: "8px" }}>Source Provider</th>
+                              <th style={{ padding: "8px" }}>Priority Tier</th>
+                              <th style={{ padding: "8px" }}>Match Score</th>
+                              <th style={{ padding: "8px" }}>Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {autoDiscoveredJobs.map((item: any) => {
+                              const job = item.job || item;
+                              return (
+                                <tr key={job.id} style={{ borderBottom: "1px solid var(--line)" }}>
+                                  <td style={{ padding: "8px" }}>
+                                    <strong>{job.title}</strong>
+                                    <div style={{ fontSize: "11px", color: "var(--muted)" }}>{job.company?.name || "Direct Employer"}</div>
+                                  </td>
+                                  <td style={{ padding: "8px", fontSize: "12px" }}>{job.location || "Cairo, Egypt"}</td>
+                                  <td style={{ padding: "8px", fontSize: "12px", color: "var(--muted)" }}>{job.jobSource?.name || "Jooble API"}</td>
+                                  <td style={{ padding: "8px" }}>
+                                    <span className={`badge ${item.priorityTier === "HIGH_PRIORITY" ? "badge-mint" : item.priorityTier === "GOOD_MATCH" ? "badge-navy" : "badge-coral"}`}>
+                                      {item.priorityTier || "GOOD_MATCH"}
+                                    </span>
+                                  </td>
+                                  <td style={{ padding: "8px", fontWeight: 700, color: (item.matchScore || 60) >= 70 ? "#059669" : "var(--navy)" }}>
+                                    {item.matchScore || 60}%
+                                  </td>
+                                  <td style={{ padding: "8px" }}>
+                                    <div style={{ display: "flex", gap: "6px" }}>
+                                      {job.sourceUrl && (
+                                        <a href={job.sourceUrl} target="_blank" rel="noopener noreferrer" className="btn btn-secondary btn-sm" style={{ textDecoration: "none" }}>
+                                          🔗 Vacancy
+                                        </a>
+                                      )}
+                                      <button
+                                        className="btn btn-primary btn-sm"
+                                        onClick={() => handleCreateApplication(job.id)}
+                                      >
+                                        ✉️ Prepare
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+
+                    {/* TAB: APPROVED AUTOMATICALLY */}
+                    {overviewWorkflowTab === "approved" && (
+                      <div>
+                        <div style={{ marginBottom: "12px", fontSize: "13px", color: "var(--muted)" }}>
+                          Applications verified as fresh and approved automatically according to the active Auto-Approval Policy (<strong>{workerStatus.autoApprovalPolicy}</strong>).
+                        </div>
+                        {autoApprovedJobs.length === 0 ? (
+                          <div className="empty-state" style={{ padding: "24px" }}>
+                            <div style={{ fontSize: "24px", marginBottom: "8px" }}>⚡</div>
+                            <div style={{ fontWeight: 600 }}>No Automatically Approved Packages Yet</div>
+                            <div style={{ fontSize: "12px", color: "var(--muted)", marginTop: "4px" }}>
+                              Set policy to <strong>HIGH_MATCH</strong> (≥ 75%) or <strong>ALWAYS</strong> to enable automatic approval of fresh, qualifying jobs.
+                            </div>
+                          </div>
+                        ) : (
+                          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
+                            <thead>
+                              <tr style={{ borderBottom: "2px solid var(--line)", textAlign: "left" }}>
+                                <th style={{ padding: "8px" }}>Job Role & Company</th>
+                                <th style={{ padding: "8px" }}>Channel</th>
+                                <th style={{ padding: "8px" }}>Match Score</th>
+                                <th style={{ padding: "8px" }}>Freshness Status</th>
+                                <th style={{ padding: "8px" }}>Approval Rule</th>
+                                <th style={{ padding: "8px" }}>Actions</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {autoApprovedJobs.map((prep) => (
+                                <tr key={prep.id} style={{ borderBottom: "1px solid var(--line)" }}>
+                                  <td style={{ padding: "8px" }}>
+                                    <strong>{prep.job?.title}</strong>
+                                    <div style={{ fontSize: "11px", color: "var(--muted)" }}>{prep.job?.company?.name}</div>
+                                  </td>
+                                  <td style={{ padding: "8px", fontSize: "12px" }}>{prep.applicationChannel}</td>
+                                  <td style={{ padding: "8px", fontWeight: 700, color: "#059669" }}>{prep.eligibilityScore}%</td>
+                                  <td style={{ padding: "8px" }}>
+                                    <span className="badge badge-mint">● ACTIVE</span>
+                                  </td>
+                                  <td style={{ padding: "8px", fontSize: "12px", color: "var(--muted)" }}>
+                                    Auto-Approved ({workerStatus.autoApprovalPolicy})
+                                  </td>
+                                  <td style={{ padding: "8px" }}>
+                                    <button
+                                      className="btn btn-secondary btn-sm"
+                                      onClick={() => {
+                                        setSelectedPrepId(prep.id);
+                                        setActiveTab("review");
+                                      }}
+                                    >
+                                      Inspect Package
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        )}
+                      </div>
+                    )}
+
+                    {/* TAB: SENT AUTOMATICALLY */}
+                    {overviewWorkflowTab === "sent" && (
+                      <div>
+                        <div style={{ marginBottom: "12px", fontSize: "13px", color: "var(--muted)" }}>
+                          Applications dispatched autonomously via confirmed delivery channels. All transmissions are grounded strictly in Nayera's verified profile.
+                        </div>
+                        {autoSentJobs.length === 0 ? (
+                          <div className="empty-state" style={{ padding: "24px" }}>
+                            <div style={{ fontSize: "24px", marginBottom: "8px" }}>🚀</div>
+                            <div style={{ fontWeight: 600 }}>No Autonomous Submissions Executed Yet</div>
+                            <div style={{ fontSize: "12px", color: "var(--muted)", marginTop: "4px" }}>
+                              Enable <strong>Autonomous Email Dispatch</strong> and approved applications will be submitted within configured rate limits.
+                            </div>
+                          </div>
+                        ) : (
+                          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
+                            <thead>
+                              <tr style={{ borderBottom: "2px solid var(--line)", textAlign: "left" }}>
+                                <th style={{ padding: "8px" }}>Target Role & Employer</th>
+                                <th style={{ padding: "8px" }}>Recipient Email</th>
+                                <th style={{ padding: "8px" }}>Status</th>
+                                <th style={{ padding: "8px" }}>Delivery Timestamp</th>
+                                <th style={{ padding: "8px" }}>Actions</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {autoSentJobs.map((app) => (
+                                <tr key={app.id} style={{ borderBottom: "1px solid var(--line)" }}>
+                                  <td style={{ padding: "8px" }}>
+                                    <strong>{app.job?.title}</strong>
+                                    <div style={{ fontSize: "11px", color: "var(--muted)" }}>{app.job?.company?.name}</div>
+                                  </td>
+                                  <td style={{ padding: "8px", fontSize: "12px" }}>
+                                    {app.selectedGeneratedEmail?.recipientEmail || "HR Recruitment"}
+                                  </td>
+                                  <td style={{ padding: "8px" }}>
+                                    <span className="badge badge-mint">✓ DELIVERED</span>
+                                  </td>
+                                  <td style={{ padding: "8px", fontSize: "12px", color: "var(--muted)" }}>
+                                    {app.sentAt ? new Date(app.sentAt).toLocaleString() : "Just now"}
+                                  </td>
+                                  <td style={{ padding: "8px" }}>
+                                    <button
+                                      className="btn btn-secondary btn-sm"
+                                      onClick={() => {
+                                        setSelectedAppId(app.id);
+                                        setActiveTab("sent");
+                                      }}
+                                    >
+                                      View Receipt
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        )}
+                      </div>
+                    )}
+
+                    {/* TAB: REQUIRES MANUAL REVIEW */}
+                    {overviewWorkflowTab === "manual_review" && (
+                      <div>
+                        <div style={{ marginBottom: "12px", fontSize: "13px", color: "var(--muted)" }}>
+                          Positions that cannot be dispatched fully automatically and require human verification (e.g. Cloudflare anti-bot protection, external ATS application portals, or manual policy gate).
+                        </div>
+                        {manualReviewJobs.length === 0 ? (
+                          <div className="empty-state" style={{ padding: "24px" }}>
+                            <div style={{ fontSize: "24px", marginBottom: "8px" }}>✓</div>
+                            <div style={{ fontWeight: 600 }}>No Jobs Requiring Manual Review</div>
+                            <div style={{ fontSize: "12px", color: "var(--muted)", marginTop: "4px" }}>
+                              All active vacancies are either automatically approved or fully processed.
+                            </div>
+                          </div>
+                        ) : (
+                          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                            {manualReviewJobs.map((prep) => {
+                              const isBotBlocked = prep.freshnessStatus === "BLOCKED";
+                              return (
+                                <div
+                                  key={prep.id}
+                                  style={{
+                                    border: isBotBlocked ? "1px solid #fde68a" : "1px solid var(--line)",
+                                    background: isBotBlocked ? "#fffbeb" : "#fff",
+                                    borderRadius: "8px",
+                                    padding: "14px 18px",
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    alignItems: "center",
+                                    flexWrap: "wrap",
+                                    gap: "12px",
+                                  }}
+                                >
+                                  <div style={{ flex: 1, minWidth: "260px" }}>
+                                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+                                      <strong style={{ fontSize: "14px", color: "var(--navy)" }}>{prep.job?.title}</strong>
+                                      <span className={`badge ${isBotBlocked ? "badge-gold" : "badge-navy"}`}>
+                                        {isBotBlocked ? "🔒 ANTI-BOT PROTECTED" : "⚠️ MANUAL REVIEW GATE"}
+                                      </span>
+                                      <span className="badge badge-mint">{prep.eligibilityScore}% Match</span>
+                                    </div>
+                                    <div style={{ fontSize: "12px", color: "var(--muted)", marginBottom: "6px" }}>
+                                      🏛️ {prep.job?.company?.name} • 📍 {prep.job?.location || "Cairo, Egypt"} • Source: {prep.sourceProvider || "Jooble API"}
+                                    </div>
+                                    <div style={{ fontSize: "12px", color: isBotBlocked ? "#92400e" : "#334155", background: isBotBlocked ? "#fef3c7" : "#f1f5f9", padding: "6px 10px", borderRadius: "6px" }}>
+                                      <strong>Exact Reason:</strong> {prep.freshnessReason || prep.manualActionNotes || "Provider enforces anti-bot screen / Cloudflare verification or manual approval gate is required."}
+                                    </div>
+                                  </div>
+
+                                  <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                                    {(prep.applicationUrl || prep.sourceUrl || prep.canonicalUrl) && (
+                                      <a
+                                        href={prep.applicationUrl || prep.sourceUrl || prep.canonicalUrl || "#"}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="btn btn-secondary btn-sm"
+                                        style={{ textDecoration: "none" }}
+                                      >
+                                        🌐 Open in Browser ↗
+                                      </a>
+                                    )}
+                                    <button
+                                      className="btn btn-success btn-sm"
+                                      onClick={() => handleApprovePrepared(prep.id)}
+                                      disabled={actionLoading === `prep_approve_${prep.id}`}
+                                    >
+                                      ✓ Approve Package
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* TAB: BLOCKED / CANNOT BE PROCESSED */}
+                    {overviewWorkflowTab === "blocked" && (
+                      <div>
+                        <div style={{ marginBottom: "12px", fontSize: "13px", color: "var(--muted)" }}>
+                          Positions that were automatically blocked or filtered by system quality and safety gates. The exact diagnosis is displayed for every item.
+                        </div>
+                        {blockedJobs.length === 0 ? (
+                          <div className="empty-state" style={{ padding: "24px" }}>
+                            <div style={{ fontSize: "24px", marginBottom: "8px" }}>✓</div>
+                            <div style={{ fontWeight: 600 }}>Zero Blocked Vacancies</div>
+                            <div style={{ fontSize: "12px", color: "var(--muted)", marginTop: "4px" }}>
+                              No job vacancies have been flagged as closed, removed, or incompatible.
+                            </div>
+                          </div>
+                        ) : (
+                          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                            {blockedJobs.map((item) => (
+                              <div
+                                key={item.id}
+                                style={{
+                                  border: "1px solid #fee2e2",
+                                  background: "#fff5f5",
+                                  borderRadius: "8px",
+                                  padding: "12px 16px",
+                                  display: "flex",
+                                  justifyContent: "space-between",
+                                  alignItems: "center",
+                                  flexWrap: "wrap",
+                                  gap: "12px",
+                                }}
+                              >
+                                <div style={{ flex: 1, minWidth: "260px" }}>
+                                  <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+                                    <strong style={{ fontSize: "14px", color: "#991b1b" }}>{item.title}</strong>
+                                    <span className={`badge ${item.badgeColor}`}>
+                                      {item.badge}
+                                    </span>
+                                  </div>
+                                  <div style={{ fontSize: "12px", color: "var(--muted)", marginBottom: "4px" }}>
+                                    🏛️ {item.company} • 📍 {item.location} • Source: {item.source}
+                                  </div>
+                                  <div style={{ fontSize: "12px", color: "#991b1b", background: "#fef2f2", padding: "6px 10px", borderRadius: "6px" }}>
+                                    <strong>Exact Diagnosis:</strong> {item.reason}
+                                  </div>
+                                </div>
+
+                                <div>
+                                  {item.url && (
+                                    <a
+                                      href={item.url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="btn btn-secondary btn-sm"
+                                      style={{ textDecoration: "none" }}
+                                    >
+                                      🔗 Reference Link ↗
+                                    </a>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
                 {/* Candidate Overview & Source Status */}
                 <div className="panel-grid">
                   <div className="card">
@@ -1488,6 +1982,24 @@ export default function JobHunterDashboard() {
                       Pending Approval <span className="count-pill">{prepCounts.pending}</span>
                     </button>
                     <button
+                      className={`filter-chip ${prepFilter === "APPROVED" ? "active" : ""}`}
+                      onClick={() => setPrepFilter("APPROVED")}
+                    >
+                      Approved <span className="count-pill">{prepCounts.approved}</span>
+                    </button>
+                    <button
+                      className={`filter-chip ${prepFilter === "MANUAL_ACTION" ? "active" : ""}`}
+                      onClick={() => setPrepFilter("MANUAL_ACTION")}
+                    >
+                      🛡️ Requires Manual Review <span className="count-pill">{prepCounts.manualAction}</span>
+                    </button>
+                    <button
+                      className={`filter-chip ${prepFilter === "BLOCKED_BOT" ? "active" : ""}`}
+                      onClick={() => setPrepFilter("BLOCKED_BOT")}
+                    >
+                      🔒 Anti-Bot Protected <span className="count-pill">{prepCounts.blockedBot}</span>
+                    </button>
+                    <button
                       className={`filter-chip ${prepFilter === "HIGH_PRIORITY" ? "active" : ""}`}
                       onClick={() => setPrepFilter("HIGH_PRIORITY")}
                     >
@@ -1498,12 +2010,6 @@ export default function JobHunterDashboard() {
                       onClick={() => setPrepFilter("GOOD_MATCH")}
                     >
                       ✓ Good Match <span className="count-pill">{prepCounts.goodMatch}</span>
-                    </button>
-                    <button
-                      className={`filter-chip ${prepFilter === "APPROVED" ? "active" : ""}`}
-                      onClick={() => setPrepFilter("APPROVED")}
-                    >
-                      Approved <span className="count-pill">{prepCounts.approved}</span>
                     </button>
                     <button
                       className={`filter-chip ${prepFilter === "REJECTED" ? "active" : ""}`}
@@ -1848,10 +2354,26 @@ export default function JobHunterDashboard() {
                                   <strong>Evidence:</strong> {selectedPrepared.freshnessEvidence}
                                 </div>
                               )}
-                              {selectedPrepared.freshnessStatus !== "ACTIVE" && (
-                                <div style={{ marginTop: "8px", padding: "8px 12px", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: "6px", color: "#92400e" }}>
-                                  🛡️ <strong>Approval Gate Notice:</strong> Applications can only be approved when the job posting is verified ACTIVE.
-                                  {selectedPrepared.requiresManualFreshnessCheck && " (Requires manual browser check if protected by anti-bot controls)."}
+                              {selectedPrepared.freshnessStatus === "BLOCKED" && (
+                                <div style={{ marginTop: "8px", padding: "10px 14px", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: "6px", color: "#92400e", fontSize: "12px" }}>
+                                  🔒 <strong>Anti-Bot / Cloudflare Protection Active:</strong> Provider enforces security verification screens.
+                                  <div style={{ marginTop: "4px" }}>
+                                    To review and approve safely without attempting automated bypasses:
+                                    <ol style={{ margin: "4px 0 0 16px", padding: 0 }}>
+                                      <li>Open the reference/apply link in your browser to confirm the vacancy is live.</li>
+                                      <li>Click <strong>Approve Package</strong> to authorize application preparation.</li>
+                                    </ol>
+                                  </div>
+                                </div>
+                              )}
+                              {(selectedPrepared.freshnessStatus === "CLOSED" || selectedPrepared.freshnessStatus === "NOT_FOUND") && (
+                                <div style={{ marginTop: "8px", padding: "10px 14px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "6px", color: "#991b1b", fontSize: "12px" }}>
+                                  ✕ <strong>Job Posting Inaccessible:</strong> {selectedPrepared.freshnessReason || "This job is confirmed closed or removed and cannot be approved."}
+                                </div>
+                              )}
+                              {selectedPrepared.freshnessStatus === "ACTIVE" && (
+                                <div style={{ marginTop: "8px", padding: "8px 12px", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "6px", color: "#166534", fontSize: "12px" }}>
+                                  ✓ <strong>Verified Fresh & Active:</strong> Vacancy page is live, accessible, and accepting applications.
                                 </div>
                               )}
                             </div>

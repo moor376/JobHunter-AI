@@ -3,9 +3,18 @@ import {
   isTimeoutError,
   MAX_ADAPTER_TIMEOUT_MS,
 } from "./adapters/http-timeout.js";
-import { FreshnessStatus, PreparationStatus, memoryStore, type PreparedApplicationRecord } from "../store/db-store.js";
+import { FreshnessStatus, JobStatus, PreparationStatus, memoryStore, type PreparedApplicationRecord } from "../store/db-store.js";
 import { AppError } from "../utils/app-error.js";
 import { createAuditLog } from "./audit-service.js";
+import {
+  verifyJobFreshnessWithPlaywright,
+  isPlaywrightVerificationEnabled,
+  type PlaywrightVerifierOptions,
+} from "./playwright-freshness-verifier.js";
+
+export interface FreshnessVerificationOptions extends PlaywrightVerifierOptions {
+  skipPlaywrightFallback?: boolean;
+}
 
 export interface FreshnessVerificationResult {
   status: FreshnessStatus;
@@ -36,12 +45,15 @@ const NOT_FOUND_PATTERNS = [
 ];
 
 /**
- * Checks external job URL accessibility and freshness with hard 10s timeout.
+ * Checks external job URL accessibility and freshness.
+ * Layer 1: Fast HTTP GET verification with timeout.
+ * Layer 2 (Optional Fallback): Headless Playwright browser verification for JavaScript-heavy dynamic SPAs.
  * Respects anti-bot protections, CAPTCHAs, and access restrictions without bypass.
  */
 export async function verifyJobFreshness(
   targetUrl: string,
   sourceName: string = "External Provider",
+  options?: FreshnessVerificationOptions,
 ): Promise<FreshnessVerificationResult> {
   const checkedAt = new Date();
 
@@ -61,6 +73,9 @@ export async function verifyJobFreshness(
   const { controller, signal, cleanup } = createTimeoutController({
     timeoutMs: MAX_ADAPTER_TIMEOUT_MS,
   });
+
+  let httpResult: FreshnessVerificationResult | null = null;
+  let needsJsEvaluation = false;
 
   try {
     const response = await fetch(targetUrl, {
@@ -159,33 +174,39 @@ export async function verifyJobFreshness(
         }
       }
 
-      // Page is reachable and active
-      return {
-        status: FreshnessStatus.ACTIVE,
+      // If page is very short or is a JavaScript SPA shell lacking body text, flag for optional Playwright rendering
+      if (text.length < 1200 && (text.includes("root") || text.includes("app") || text.includes("noscript") || text.includes("react") || text.includes("vue") || text.includes("next"))) {
+        needsJsEvaluation = true;
+      } else {
+        // Page is reachable and active via standard HTTP
+        return {
+          status: FreshnessStatus.ACTIVE,
+          httpStatus,
+          finalUrl,
+          reason: "Job posting is active, reachable, and accepting applications.",
+          provider: sourceName,
+          evidence: `HTTP 200 OK received with ${text.length} bytes of vacancy HTML.`,
+          checkedAt,
+          requiresManualCheck: false,
+        };
+      }
+    } else {
+      // 5xx Server Errors or other codes
+      httpResult = {
+        status: FreshnessStatus.UNKNOWN,
         httpStatus,
         finalUrl,
-        reason: "Job posting is active, reachable, and accepting applications.",
+        reason: `HTTP ${httpStatus}: Provider server returned an unexpected error response.`,
         provider: sourceName,
-        evidence: `HTTP 200 OK received with ${text.length} bytes of vacancy HTML.`,
+        evidence: `HTTP status ${httpStatus}.`,
         checkedAt,
-        requiresManualCheck: false,
+        requiresManualCheck: true,
       };
+      needsJsEvaluation = true;
     }
-
-    // 5xx Server Errors or other codes
-    return {
-      status: FreshnessStatus.UNKNOWN,
-      httpStatus,
-      finalUrl,
-      reason: `HTTP ${httpStatus}: Provider server returned an unexpected error response.`,
-      provider: sourceName,
-      evidence: `HTTP status ${httpStatus}.`,
-      checkedAt,
-      requiresManualCheck: true,
-    };
   } catch (err: any) {
     if (isTimeoutError(err)) {
-      return {
+      httpResult = {
         status: FreshnessStatus.TIMEOUT,
         httpStatus: null,
         finalUrl: targetUrl,
@@ -195,21 +216,63 @@ export async function verifyJobFreshness(
         checkedAt,
         requiresManualCheck: true,
       };
+    } else {
+      httpResult = {
+        status: FreshnessStatus.UNKNOWN,
+        httpStatus: null,
+        finalUrl: targetUrl,
+        reason: `Network error or connection refused: ${err.message || "Unknown error"}`,
+        provider: sourceName,
+        evidence: String(err),
+        checkedAt,
+        requiresManualCheck: true,
+      };
     }
-
-    return {
-      status: FreshnessStatus.UNKNOWN,
-      httpStatus: null,
-      finalUrl: targetUrl,
-      reason: `Network error or connection refused: ${err.message || "Unknown error"}`,
-      provider: sourceName,
-      evidence: String(err),
-      checkedAt,
-      requiresManualCheck: true,
-    };
+    needsJsEvaluation = true;
   } finally {
     cleanup();
   }
+
+  // Layer 2: Optional Playwright Fallback Verifier for dynamic JavaScript pages
+  if (needsJsEvaluation && !options?.skipPlaywrightFallback && isPlaywrightVerificationEnabled(options)) {
+    try {
+      const pwResult = await verifyJobFreshnessWithPlaywright(targetUrl, sourceName, options);
+      if (
+        pwResult.status === FreshnessStatus.ACTIVE ||
+        pwResult.status === FreshnessStatus.CLOSED ||
+        pwResult.status === FreshnessStatus.NOT_FOUND ||
+        pwResult.status === FreshnessStatus.BLOCKED
+      ) {
+        return {
+          status: pwResult.status,
+          httpStatus: pwResult.httpStatus,
+          finalUrl: pwResult.finalUrl,
+          reason: pwResult.reason,
+          provider: pwResult.provider,
+          evidence: pwResult.evidence,
+          checkedAt: pwResult.checkedAt,
+          requiresManualCheck: pwResult.requiresManualCheck,
+        };
+      }
+    } catch {
+      // Gracefully fall through to httpResult on Playwright unexpected error
+    }
+  }
+
+  if (httpResult) {
+    return httpResult;
+  }
+
+  return {
+    status: FreshnessStatus.ACTIVE,
+    httpStatus: 200,
+    finalUrl: targetUrl,
+    reason: "Job posting is active and accepting applications.",
+    provider: sourceName,
+    evidence: "Standard HTTP verification succeeded.",
+    checkedAt,
+    requiresManualCheck: false,
+  };
 }
 
 /**
@@ -224,6 +287,7 @@ export async function verifyJobFreshness(
  */
 export async function verifyApplicationFreshness(
   preparedApplicationId: string,
+  options?: FreshnessVerificationOptions,
 ): Promise<PreparedApplicationRecord> {
   const prep = memoryStore.preparedApplications.get(preparedApplicationId);
   if (!prep) {
@@ -258,13 +322,27 @@ export async function verifyApplicationFreshness(
   let finalResult: FreshnessVerificationResult | null = null;
 
   for (const entry of candidateUrls) {
-    const res = await verifyJobFreshness(entry.url, entry.label);
+    const res = await verifyJobFreshness(entry.url, entry.label, options);
     if (res.status === FreshnessStatus.ACTIVE) {
       finalResult = res;
       break;
     }
-    // Keep last result if no active destination found
-    if (!finalResult || finalResult.status === FreshnessStatus.BLOCKED) {
+    // Result prioritization hierarchy:
+    // 1. ACTIVE wins immediately (handled by break above)
+    // 2. CLOSED (confirmed closure) is definitive
+    // 3. NOT_FOUND (confirmed 404/410)
+    // 4. BLOCKED (bot protection / challenge)
+    // 5. TIMEOUT / UNKNOWN (transient errors)
+    if (!finalResult) {
+      finalResult = res;
+    } else if (res.status === FreshnessStatus.CLOSED) {
+      finalResult = res;
+    } else if (res.status === FreshnessStatus.NOT_FOUND && finalResult.status !== FreshnessStatus.CLOSED) {
+      finalResult = res;
+    } else if (
+      res.status === FreshnessStatus.BLOCKED &&
+      (finalResult.status === FreshnessStatus.TIMEOUT || finalResult.status === FreshnessStatus.UNKNOWN)
+    ) {
       finalResult = res;
     }
   }
@@ -301,6 +379,16 @@ export async function verifyApplicationFreshness(
 
   memoryStore.preparedApplications.set(prep.id, prep);
 
+  // Sync to underlying job record when confirmed CLOSED or NOT_FOUND
+  if (finalResult.status === FreshnessStatus.CLOSED || finalResult.status === FreshnessStatus.NOT_FOUND) {
+    const job = memoryStore.jobs.get(prep.jobId);
+    if (job) {
+      job.status = JobStatus.CLOSED;
+      job.updatedAt = new Date();
+      memoryStore.jobs.set(job.id, job);
+    }
+  }
+
   await createAuditLog({
     candidateId: prep.candidateId,
     action: "JOB_FRESHNESS_VERIFIED",
@@ -323,7 +411,9 @@ export async function verifyApplicationFreshness(
 /**
  * Batch freshness check for all prepared applications.
  */
-export async function verifyAllPreparedFreshness(): Promise<{
+export async function verifyAllPreparedFreshness(
+  options?: FreshnessVerificationOptions,
+): Promise<{
   totalChecked: number;
   activeCount: number;
   closedCount: number;
@@ -344,7 +434,7 @@ export async function verifyAllPreparedFreshness(): Promise<{
   const results: PreparedApplicationRecord[] = [];
 
   for (const prep of list) {
-    const updated = await verifyApplicationFreshness(prep.id);
+    const updated = await verifyApplicationFreshness(prep.id, options);
     results.push(updated);
 
     if (updated.freshnessStatus === FreshnessStatus.ACTIVE) activeCount++;

@@ -344,4 +344,90 @@ describe("Continuous Autonomous Worker & Production Pipeline Suite", () => {
       expect(discovery.atsProvider).toBe("Workable");
     });
   });
+
+  // 12. Auto-Approval Policy & Autonomous Application Execution Suite
+  describe("Auto-Approval Policy & Autonomous Application Execution", () => {
+    beforeEach(() => {
+      for (const source of memoryStore.jobSources.values()) {
+        if (
+          source.baseUrl?.includes("wuzzuf.net") ||
+          source.baseUrl?.includes("jooble.org") ||
+          source.baseUrl?.includes("adzuna.com")
+        ) {
+          source.isActive = false;
+        }
+      }
+    });
+
+    afterEach(() => {
+      for (const source of memoryStore.jobSources.values()) {
+        source.isActive = true;
+      }
+    });
+
+    it("automatically approves eligible applications when autoApprovalPolicy is ALWAYS", async () => {
+      worker.configure({
+        isEnabled: true,
+        applicationMode: "MANUAL",
+        autoApprovalPolicy: "ALWAYS",
+        matchThreshold: 60,
+      });
+
+      const autoJobId = "job_auto_approve_always_1";
+      memoryStore.jobs.set(autoJobId, {
+        id: autoJobId,
+        title: "Senior Legal Counsel",
+        description: "Corporate legal advice, contract review, and statutory regulatory filings in Cairo.",
+        location: "Cairo, Egypt",
+        companyId: "c1",
+        jobSourceId: "s1",
+        categories: [JobCategory.LEGAL, JobCategory.CONTRACTS],
+        status: "ACTIVE" as any,
+        sourceUrl: "https://example.com/active-legal-role",
+        canonicalUrl: "https://example.com/active-legal-role",
+        seenAt: new Date(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      const stats = await worker.runOnce("MANUAL", { timeoutMs: 50 });
+      expect(stats.matchesEvaluated).toBeGreaterThanOrEqual(1);
+      expect(stats.applicationsApprovedCount).toBeGreaterThanOrEqual(1);
+    });
+
+    it("automatically executes email sending when autoSendEnabled is true and policy is AUTONOMOUS", async () => {
+      worker.configure({
+        isEnabled: true,
+        applicationMode: "AUTONOMOUS",
+        autoApprovalPolicy: "HIGH_MATCH",
+        autoApproveThreshold: 70,
+        matchThreshold: 60,
+        dryRun: false,
+        autoSendEnabled: true,
+      });
+
+      const execJobId = "job_auto_send_exec_1";
+      memoryStore.jobs.set(execJobId, {
+        id: execJobId,
+        title: "Banking Tele-Sales Specialist",
+        description: "Outbound sales for retail banking and loan products in Cairo. Direct apply email: hr@bankcorp-cairo.com",
+        location: "Cairo, Egypt",
+        companyId: "c1",
+        jobSourceId: "s1",
+        categories: [JobCategory.BANKING, JobCategory.SALES],
+        status: "ACTIVE" as any,
+        sourceUrl: "https://bankcorp-cairo.com/careers/sales",
+        canonicalUrl: "https://bankcorp-cairo.com/careers/sales",
+        seenAt: new Date(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      const stats = await worker.runOnce("MANUAL", { timeoutMs: 50 });
+      expect(stats.matchesEvaluated).toBeGreaterThanOrEqual(1);
+      expect(stats.applicationsCreated).toBeGreaterThanOrEqual(1);
+      expect(stats.emailsSent).toBeGreaterThanOrEqual(1);
+      expect(stats.applicationsSubmitted).toBeGreaterThanOrEqual(1);
+    });
+  });
 });

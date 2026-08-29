@@ -162,7 +162,12 @@ export const getPreparedApplication: RequestHandler = asyncHandler(
 
 export const postApprovePrepared: RequestHandler = asyncHandler(
   async (request, response) => {
-    const item = await approvePreparedApplication(getParam(request.params.id));
+    const { forceApprove, skipFreshnessCheck, notes } = request.body || {};
+    const item = await approvePreparedApplication(getParam(request.params.id), {
+      forceApprove: typeof forceApprove === "boolean" ? forceApprove : undefined,
+      skipFreshnessCheck: typeof skipFreshnessCheck === "boolean" ? skipFreshnessCheck : undefined,
+      notes: typeof notes === "string" ? notes : undefined,
+    });
     response.status(200).json({
       data: item,
       message: "Application preparation package has been APPROVED. (No automatic email sent).",

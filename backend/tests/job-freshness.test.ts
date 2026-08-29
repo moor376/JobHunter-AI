@@ -294,5 +294,111 @@ describe("Job Freshness Verification Engine & Approval Gate", () => {
       expect(updatedPrep?.freshnessStatus).toBe(FreshnessStatus.BLOCKED);
       expect(updatedPrep?.requiresManualFreshnessCheck).toBe(true);
     });
+
+    it("allows approval with forceApprove for manual verification of bot-protected job", async () => {
+      const blockedJobId = "job-freshness-blocked-04";
+      const blockedJob: JobRecord = {
+        id: blockedJobId,
+        companyId: "c-fresh-4",
+        jobSourceId: "src-fresh",
+        title: "Senior Legal Affairs Specialist",
+        description: "Corporate legal compliance in Cairo.",
+        location: "Cairo, Egypt",
+        employmentType: EmploymentType.FULL_TIME,
+        sourceUrl: `${baseUrl}/cloudflare-challenge`,
+        canonicalUrl: `${baseUrl}/cloudflare-challenge`,
+        categories: ["LEGAL"],
+        status: JobStatus.ACTIVE,
+        seenAt: new Date(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        company: {
+          id: "c-fresh-4",
+          name: "Cloudflare Secured Corp",
+          normalizedName: "cloudflare secured corp",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      };
+      memoryStore.jobs.set(blockedJobId, blockedJob);
+
+      const prep = await prepareApplicationForJob(blockedJobId);
+      const approved = await approvePreparedApplication(prep.id, { forceApprove: true });
+
+      expect(approved.preparationStatus).toBe(PreparationStatus.APPROVED);
+      expect(approved.provenance.emailSent).toBe(false);
+    });
+
+    it("handles transient server 500 error gracefully on recently discovered job without classifying as stale", async () => {
+      const transientJobId = "job-freshness-transient-05";
+      const transientJob: JobRecord = {
+        id: transientJobId,
+        companyId: "c-fresh-5",
+        jobSourceId: "src-fresh",
+        title: "Compliance Officer",
+        description: "Regulatory compliance and reporting in Cairo.",
+        location: "Cairo, Egypt",
+        employmentType: EmploymentType.FULL_TIME,
+        sourceUrl: `${baseUrl}/server-error-500`,
+        canonicalUrl: `${baseUrl}/server-error-500`,
+        categories: ["COMPLIANCE"],
+        status: JobStatus.ACTIVE,
+        seenAt: new Date(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        company: {
+          id: "c-fresh-5",
+          name: "Temporary Glitch Corp",
+          normalizedName: "temporary glitch corp",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      };
+      memoryStore.jobs.set(transientJobId, transientJob);
+
+      const prep = await prepareApplicationForJob(transientJobId);
+      // Recently discovered job should allow approval without throwing FRESHNESS_VERIFICATION_BLOCKED
+      const approved = await approvePreparedApplication(prep.id);
+      expect(approved.preparationStatus).toBe(PreparationStatus.APPROVED);
+      expect(approved.freshnessStatus).toBe(FreshnessStatus.UNKNOWN);
+    });
+
+    it("blocks approval for 404 NOT_FOUND jobs with clear error reason", async () => {
+      const notFoundJobId = "job-freshness-404-06";
+      const notFoundJob: JobRecord = {
+        id: notFoundJobId,
+        companyId: "c-fresh-6",
+        jobSourceId: "src-fresh",
+        title: "Legal Associate",
+        description: "Drafting contracts in Cairo.",
+        location: "Cairo, Egypt",
+        employmentType: EmploymentType.FULL_TIME,
+        sourceUrl: `${baseUrl}/not-found-404`,
+        canonicalUrl: `${baseUrl}/not-found-404`,
+        categories: ["LEGAL"],
+        status: JobStatus.ACTIVE,
+        seenAt: new Date(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        company: {
+          id: "c-fresh-6",
+          name: "Removed Corp",
+          normalizedName: "removed corp",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      };
+      memoryStore.jobs.set(notFoundJobId, notFoundJob);
+
+      const prep = await prepareApplicationForJob(notFoundJobId);
+
+      await expect(approvePreparedApplication(prep.id)).rejects.toThrow(
+        /Application approval blocked: Underlying job posting is not ACTIVE \(Status: NOT_FOUND\)/,
+      );
+
+      const updatedPrep = memoryStore.preparedApplications.get(prep.id);
+      expect(updatedPrep?.freshnessStatus).toBe(FreshnessStatus.NOT_FOUND);
+      expect(updatedPrep?.preparationStatus).toBe(PreparationStatus.PENDING_APPROVAL);
+    });
   });
 });

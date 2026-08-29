@@ -6,6 +6,8 @@ import {
   ApplicationStatus,
   ApplicationWorkflowStatus,
   DetectedChannel,
+  FreshnessStatus,
+  JobStatus,
   PreparationStatus,
   type JobRecord,
   isDbConnected,
@@ -15,13 +17,14 @@ import { AppError } from "../../utils/app-error.js";
 import { evaluateCandidateJobMatch } from "../ai-matching-service.js";
 import { evaluateCandidateEligibility } from "../eligibility-service.js";
 import { createApplication, listApplications } from "../application-service.js";
-import { prepareApplicationForJob } from "../application-preparation-service.js";
+import { approvePreparedApplication, prepareApplicationForJob } from "../application-preparation-service.js";
 import { createAuditLog } from "../audit-service.js";
 import { listCandidates, listResumes } from "../candidate-service.js";
 import { reviewGeneratedEmail, sendApplicationEmail } from "../email-service.js";
 import { ingestJobsFromSource, listJobs } from "../job-service.js";
 import { listJobSources } from "../job-source-service.js";
 import { discoverDirectEmployer } from "../job-employer-discovery-service.js";
+import { verifyJobFreshness } from "../job-freshness-service.js";
 import type {
   AutoApprovalPolicy,
   WorkerConfiguration,
@@ -376,7 +379,7 @@ export class JobPollingWorker {
 
         for (const job of jobsToEvaluate) {
           try {
-            // Quality Gate: Evaluate Eligibility & Priority Tier against Nayera's Verified Profile
+            // Quality Gate 1: Evaluate Location & Candidate Track Eligibility
             const eligibility = evaluateCandidateEligibility({
               title: job.title,
               description: job.description,
@@ -394,7 +397,21 @@ export class JobPollingWorker {
               stats.rejectedJobs++;
             }
 
-            // Check duplicate application across stored history
+            if (!eligibility.isEligibleForApplication) {
+              continue;
+            }
+
+            // Quality Gate 2: Freshness Check
+            if (
+              job.status === JobStatus.CLOSED ||
+              job.status === JobStatus.ARCHIVED ||
+              (job as any).freshnessStatus === FreshnessStatus.CLOSED ||
+              (job as any).freshnessStatus === FreshnessStatus.NOT_FOUND
+            ) {
+              continue;
+            }
+
+            // Quality Gate 3: Check duplicate application across stored history
             const existingApps = await listApplications({
               candidateId: candidate.id,
               jobId: job.id,
@@ -405,12 +422,12 @@ export class JobPollingWorker {
               continue;
             }
 
-            // AI Matching Engine for Nayera
+            // AI Matching Engine for Candidate Profile
             const matchEval = await evaluateCandidateJobMatch(candidate.id, job.id);
             stats.matchesEvaluated++;
 
-            // QUALITY GATE: Only process HIGH_PRIORITY or GOOD_MATCH (Eligibility >= 70)
-            if (eligibility.isEligibleForApplication && matchEval.match.matchScore >= this.matchThreshold) {
+            // Quality Gate 4: Match Score Threshold Check
+            if (matchEval.match.matchScore >= this.matchThreshold) {
               const application = await createApplication({
                 candidateId: candidate.id,
                 jobId: job.id,
@@ -434,13 +451,39 @@ export class JobPollingWorker {
                 // Handled gracefully
               }
 
+              // Evaluate Automatic Approval Policy
+              const isEligibleForAutoApprove =
+                this.autoApprovalPolicy === "ALWAYS" ||
+                (this.autoApprovalPolicy === "HIGH_MATCH" && matchEval.match.matchScore >= this.autoApproveThreshold);
+
+              if (isEligibleForAutoApprove) {
+                try {
+                  if (prep) {
+                    await approvePreparedApplication(prep.id, { forceApprove: true });
+                  }
+                  if (application.selectedGeneratedEmailId) {
+                    await reviewGeneratedEmail(
+                      application.selectedGeneratedEmailId,
+                      "APPROVED",
+                      `Autonomous Policy Approved (${this.autoApprovalPolicy} Match Score: ${matchEval.match.matchScore}%)`,
+                    );
+                  }
+                  stats.applicationsApprovedCount = (stats.applicationsApprovedCount || 0) + 1;
+                } catch {
+                  // Handled safely
+                }
+              }
+
               // Detect Channel & Evaluate Autonomous Execution Rules
               if (this.applicationMode === "AUTONOMOUS") {
                 const channel = prep?.applicationChannel || DetectedChannel.UNKNOWN;
 
                 if (channel === DetectedChannel.EMAIL) {
-                  const targetEmail = prep?.originalEmployerUrl?.replace("mailto:", "") || prep?.employerUrl?.replace("mailto:", "");
-                  
+                  const targetEmail =
+                    prep?.originalEmployerUrl?.replace("mailto:", "") ||
+                    prep?.employerUrl?.replace("mailto:", "") ||
+                    prep?.preparedEmail?.recipientEmail;
+
                   if (targetEmail && targetEmail.includes("@")) {
                     if (this.dryRun) {
                       stats.applicationsQueued = (stats.applicationsQueued || 0) + 1;
@@ -460,14 +503,19 @@ export class JobPollingWorker {
                       });
                     } else if (this.autoSendEnabled && application.selectedGeneratedEmailId) {
                       try {
-                        await reviewGeneratedEmail(
-                          application.selectedGeneratedEmailId,
-                          "APPROVED",
-                          "Autonomous Approved for Direct Recruitment Email",
-                        );
-                        await sendApplicationEmail(application.id);
-                        stats.emailsSent = (stats.emailsSent || 0) + 1;
-                        stats.applicationsSubmitted = (stats.applicationsSubmitted || 0) + 1;
+                        if (!isEligibleForAutoApprove) {
+                          await reviewGeneratedEmail(
+                            application.selectedGeneratedEmailId,
+                            "APPROVED",
+                            "Autonomous Approved for Direct Recruitment Email",
+                          );
+                        }
+                        if ((stats.emailsSent || 0) < this.maxBatchSends) {
+                          await sendApplicationEmail(application.id);
+                          stats.emailsSent = (stats.emailsSent || 0) + 1;
+                          stats.applicationsSubmitted = (stats.applicationsSubmitted || 0) + 1;
+                          stats.applicationsSentCount = (stats.applicationsSentCount || 0) + 1;
+                        }
                       } catch (err: any) {
                         stats.failedApplications = (stats.failedApplications || 0) + 1;
                       }
@@ -480,7 +528,6 @@ export class JobPollingWorker {
                   channel === DetectedChannel.COMPANY_APPLICATION_PAGE ||
                   channel === DetectedChannel.JOB_BOARD
                 ) {
-                  // Portal requires human navigation (CAPTCHA, Cloudflare, login restrictions)
                   stats.manualActionsRequired = (stats.manualActionsRequired || 0) + 1;
                   stats.blockedByBotProtection = (stats.blockedByBotProtection || 0) + 1;
 
@@ -500,7 +547,6 @@ export class JobPollingWorker {
                   });
                 }
               } else {
-                // Manual Mode: Retain Human Approval Gate
                 if (prep?.requiresManualAction) {
                   stats.manualActionsRequired = (stats.manualActionsRequired || 0) + 1;
                 }

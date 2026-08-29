@@ -538,33 +538,114 @@ export async function getPreparedApplicationById(id: string): Promise<PreparedAp
   };
 }
 
+export interface ApprovePreparedOptions {
+  forceApprove?: boolean;
+  skipFreshnessCheck?: boolean;
+  notes?: string;
+}
+
 /**
  * Human approval transition with mandatory Job Freshness Verification Gate.
- * An application may ONLY become APPROVED when freshness status is ACTIVE.
+ * Distinguishes confirmed closed/expired jobs from bot protection and transient errors.
  * Does NOT send emails or submit forms.
  */
 export async function approvePreparedApplication(
   id: string,
-  options?: { skipFreshnessCheck?: boolean; forceApprove?: boolean },
+  options?: ApprovePreparedOptions,
 ): Promise<PreparedApplicationRecord> {
   let prep = await getPreparedApplicationById(id);
 
-  if (!options?.skipFreshnessCheck && !options?.forceApprove) {
-    prep = await verifyApplicationFreshness(id);
-    if (prep.freshnessStatus !== FreshnessStatus.ACTIVE) {
-      const status = prep.freshnessStatus || "UNKNOWN";
-      const reason = prep.freshnessReason || "Job posting is not active or accessible.";
+  const hasUsableUrl = Boolean(
+    (prep.sourceUrl && prep.sourceUrl.startsWith("http")) ||
+    (prep.canonicalUrl && prep.canonicalUrl.startsWith("http")) ||
+    (prep.applicationUrl && prep.applicationUrl.startsWith("http")) ||
+    (prep.employerUrl && prep.employerUrl.startsWith("http")) ||
+    (prep.atsUrl && prep.atsUrl.startsWith("http"))
+  );
 
+  if (!hasUsableUrl) {
+    prep.preparationStatus = PreparationStatus.PENDING_APPROVAL;
+    prep.requiresManualFreshnessCheck = true;
+    prep.updatedAt = new Date();
+    memoryStore.preparedApplications.set(id, prep);
+
+    throw new AppError(
+      "Application approval blocked: Job record has no valid application or source URL.",
+      400,
+      "FRESHNESS_VERIFICATION_BLOCKED",
+    );
+  }
+
+  if (!options?.skipFreshnessCheck && !options?.forceApprove) {
+    const isRecentlyActive =
+      prep.freshnessStatus === FreshnessStatus.ACTIVE &&
+      prep.freshnessCheckedAt &&
+      Date.now() - new Date(prep.freshnessCheckedAt).getTime() < 15 * 60 * 1000;
+
+    if (!isRecentlyActive) {
+      prep = await verifyApplicationFreshness(id);
+    }
+
+    if (prep.freshnessStatus === FreshnessStatus.CLOSED) {
+      const reason = prep.freshnessReason || "Job posting is closed, expired, or filled.";
       prep.preparationStatus = PreparationStatus.PENDING_APPROVAL;
       prep.requiresManualFreshnessCheck = true;
       prep.updatedAt = new Date();
       memoryStore.preparedApplications.set(id, prep);
 
       throw new AppError(
-        `Application approval blocked: Underlying job posting is not ACTIVE (Status: ${status}). Reason: ${reason}`,
+        `Application approval blocked: Underlying job posting is not ACTIVE (Status: CLOSED). Reason: ${reason}`,
         400,
         "FRESHNESS_VERIFICATION_BLOCKED",
       );
+    }
+
+    if (prep.freshnessStatus === FreshnessStatus.NOT_FOUND) {
+      const reason = prep.freshnessReason || "Job posting page was not found (HTTP 404).";
+      prep.preparationStatus = PreparationStatus.PENDING_APPROVAL;
+      prep.requiresManualFreshnessCheck = true;
+      prep.updatedAt = new Date();
+      memoryStore.preparedApplications.set(id, prep);
+
+      throw new AppError(
+        `Application approval blocked: Underlying job posting is not ACTIVE (Status: NOT_FOUND). Reason: ${reason}`,
+        400,
+        "FRESHNESS_VERIFICATION_BLOCKED",
+      );
+    }
+
+    if (prep.freshnessStatus === FreshnessStatus.BLOCKED) {
+      const reason = prep.freshnessReason || "Provider enforces automated bot protection / Cloudflare screen.";
+      prep.preparationStatus = PreparationStatus.PENDING_APPROVAL;
+      prep.requiresManualFreshnessCheck = true;
+      prep.updatedAt = new Date();
+      memoryStore.preparedApplications.set(id, prep);
+
+      throw new AppError(
+        `Application approval blocked: Underlying job posting is not ACTIVE (Status: BLOCKED). Reason: ${reason}`,
+        400,
+        "FRESHNESS_VERIFICATION_BLOCKED",
+      );
+    }
+
+    if (prep.freshnessStatus === FreshnessStatus.TIMEOUT || prep.freshnessStatus === FreshnessStatus.UNKNOWN) {
+      const jobSeenAt = prep.job?.seenAt || prep.job?.createdAt || prep.createdAt;
+      const isRecentlyDiscovered =
+        jobSeenAt && Date.now() - new Date(jobSeenAt).getTime() < 72 * 60 * 60 * 1000;
+
+      if (!isRecentlyDiscovered) {
+        const reason = prep.freshnessReason || "Job freshness verification temporarily unavailable.";
+        prep.preparationStatus = PreparationStatus.PENDING_APPROVAL;
+        prep.requiresManualFreshnessCheck = true;
+        prep.updatedAt = new Date();
+        memoryStore.preparedApplications.set(id, prep);
+
+        throw new AppError(
+          `Application approval blocked: Job freshness verification temporarily unavailable (Status: ${prep.freshnessStatus}). Reason: ${reason}`,
+          400,
+          "FRESHNESS_VERIFICATION_BLOCKED",
+        );
+      }
     }
   }
 
@@ -582,6 +663,9 @@ export async function approvePreparedApplication(
       jobId: prep.jobId,
       status: PreparationStatus.APPROVED,
       freshnessStatus: prep.freshnessStatus || FreshnessStatus.ACTIVE,
+      forceApprove: Boolean(options?.forceApprove),
+      skipFreshnessCheck: Boolean(options?.skipFreshnessCheck),
+      notes: options?.notes || null,
       emailSent: false,
       applicationSubmitted: false,
       notice: "Approval recorded after verifying active job posting. No automatic dispatch executed.",

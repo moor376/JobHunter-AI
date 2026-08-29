@@ -50,6 +50,8 @@ const environmentSchema = z.object({
   DISCOVERY_MAX_QUERIES_PER_JOB: z.coerce.number().int().min(1).max(10).default(5),
   DISCOVERY_MAX_JOBS_PER_RUN: z.coerce.number().int().min(1).max(100).default(20),
   HTTP_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(1000).max(60000).default(10000),
+  PLAYWRIGHT_VERIFICATION_ENABLED: z.coerce.boolean().default(false),
+  PLAYWRIGHT_TIMEOUT_MS: z.coerce.number().int().min(1000).max(60000).default(10000),
   APP_URL: z.string().trim().default("http://localhost:3000"),
   CORS_ORIGIN: z.string().trim().default("http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000,http://127.0.0.1:3001"),
   UPLOAD_DIR: z.string().trim().default("uploads"),
