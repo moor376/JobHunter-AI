@@ -204,7 +204,6 @@ export async function seedPostgresIfEmpty(): Promise<void> {
 
     const resumeCount = await prisma.resume.count();
     if (resumeCount === 0) {
-
       for (const r of memoryStore.resumes.values()) {
         await prisma.resume.upsert({
           where: { id: r.id },
@@ -226,7 +225,10 @@ export async function seedPostgresIfEmpty(): Promise<void> {
           update: {},
         });
       }
+    }
 
+    const jobSourceCount = await prisma.jobSource.count();
+    if (jobSourceCount === 0) {
       for (const s of memoryStore.jobSources.values()) {
         await prisma.jobSource.upsert({
           where: { id: s.id },
@@ -247,7 +249,18 @@ export async function seedPostgresIfEmpty(): Promise<void> {
           update: {},
         });
       }
+    }
 
+    // Ensure real legitimate sources (Jooble & Adzuna) remain active
+    try {
+      const { syncDefaultActiveSources } = await import("../services/job-source-service.js");
+      await syncDefaultActiveSources();
+    } catch {
+      // Handled gracefully
+    }
+
+    const companyCount = await prisma.company.count();
+    if (companyCount === 0) {
       for (const comp of memoryStore.companies.values()) {
         await prisma.company.upsert({
           where: { id: comp.id },
@@ -265,6 +278,7 @@ export async function seedPostgresIfEmpty(): Promise<void> {
           update: {},
         });
       }
+    }
 
       for (const j of memoryStore.jobs.values()) {
         await prisma.job.upsert({
@@ -291,7 +305,6 @@ export async function seedPostgresIfEmpty(): Promise<void> {
           update: {},
         });
       }
-    }
   } catch (err: any) {
     // Non-fatal if seeding is already satisfied or fails gracefully
   }

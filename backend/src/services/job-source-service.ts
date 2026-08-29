@@ -213,3 +213,24 @@ export async function setAllSourcesActiveStatus(active: boolean, filter?: (s: Jo
   }
 }
 
+export async function syncDefaultActiveSources(): Promise<void> {
+  const sources = await listJobSources();
+  for (const s of sources) {
+    const isReal =
+      (s.externalSourceId?.toLowerCase().includes("jooble") ||
+        s.name.toLowerCase().includes("jooble") ||
+        s.baseUrl?.toLowerCase().includes("jooble") ||
+        s.externalSourceId?.toLowerCase().includes("adzuna") ||
+        s.name.toLowerCase().includes("adzuna") ||
+        s.baseUrl?.toLowerCase().includes("adzuna")) &&
+      !s.baseUrl?.includes("example");
+
+    if (isReal && (!s.isActive || s.healthStatus !== JobSourceHealthStatus.HEALTHY)) {
+      await updateJobSource(s.id, {
+        isActive: true,
+        healthStatus: JobSourceHealthStatus.HEALTHY,
+      });
+    }
+  }
+}
+

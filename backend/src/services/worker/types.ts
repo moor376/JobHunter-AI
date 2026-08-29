@@ -23,6 +23,12 @@ export interface WorkerRunStats {
   jobsDiscovered: number;
   duplicatesSkipped: number;
   duplicatesPrevented?: number;
+  duplicateByExternalId?: number;
+  duplicateByCanonicalUrl?: number;
+  duplicateByContentHash?: number;
+  duplicateByNormalizedIdentity?: number;
+  foreignJobsRejected?: number;
+  queriesExecuted?: number;
   newJobsCreated: number;
   matchesEvaluated: number;
   highPriorityJobs: number;

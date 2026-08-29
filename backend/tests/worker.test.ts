@@ -12,7 +12,7 @@ import {
   memoryStore,
 } from "../src/store/db-store.js";
 
-import { setAllSourcesActiveStatus } from "../src/services/job-source-service.js";
+import { setAllSourcesActiveStatus, syncDefaultActiveSources } from "../src/services/job-source-service.js";
 
 describe("Job Polling Worker & Background Automation Suite", () => {
   let server: Server;
@@ -48,8 +48,8 @@ describe("Job Polling Worker & Background Automation Suite", () => {
 
   afterEach(async () => {
     memoryStore.jobSources.delete(testMockSourceId);
-    // Restore default active status for sources
-    await setAllSourcesActiveStatus(true, (s) => s.externalSourceId === "jooble-api" || s.externalSourceId === "adzuna-api");
+    // Restore default active status for real sources
+    await syncDefaultActiveSources();
     if (server) {
       await new Promise<void>((resolve, reject) => {
         server.close((err) => (err ? reject(err) : resolve()));

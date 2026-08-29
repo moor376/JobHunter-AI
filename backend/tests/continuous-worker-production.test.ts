@@ -365,8 +365,8 @@ describe("Continuous Autonomous Worker & Production Pipeline Suite", () => {
     });
 
     afterEach(async () => {
-      const { setAllSourcesActiveStatus } = await import("../src/services/job-source-service.js");
-      await setAllSourcesActiveStatus(true, (s) => s.externalSourceId === "jooble-api" || s.externalSourceId === "adzuna-api");
+      const { syncDefaultActiveSources } = await import("../src/services/job-source-service.js");
+      await syncDefaultActiveSources();
     });
 
     it("automatically approves eligible applications when autoApprovalPolicy is ALWAYS", async () => {

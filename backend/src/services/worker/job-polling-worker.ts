@@ -227,6 +227,12 @@ export class JobPollingWorker {
       jobsDiscovered: 0,
       duplicatesSkipped: 0,
       duplicatesPrevented: 0,
+      duplicateByExternalId: 0,
+      duplicateByCanonicalUrl: 0,
+      duplicateByContentHash: 0,
+      duplicateByNormalizedIdentity: 0,
+      foreignJobsRejected: 0,
+      queriesExecuted: 0,
       newJobsCreated: 0,
       matchesEvaluated: 0,
       highPriorityJobs: 0,
@@ -321,6 +327,16 @@ export class JobPollingWorker {
           stats.jobsDiscovered += ingestionResult.jobs.length + ingestionResult.duplicatesSkipped;
           stats.duplicatesSkipped += ingestionResult.duplicatesSkipped;
           stats.newJobsCreated += ingestionResult.ingestedCount;
+          stats.foreignJobsRejected = (stats.foreignJobsRejected || 0) + (ingestionResult.foreignJobsRejected || 0);
+          stats.queriesExecuted = (stats.queriesExecuted || 0) + (ingestionResult.queryMetrics?.length || 1);
+
+          if (ingestionResult.duplicateBreakdown) {
+            stats.duplicateByExternalId = (stats.duplicateByExternalId || 0) + ingestionResult.duplicateBreakdown.duplicateByExternalId;
+            stats.duplicateByCanonicalUrl = (stats.duplicateByCanonicalUrl || 0) + ingestionResult.duplicateBreakdown.duplicateByCanonicalUrl;
+            stats.duplicateByContentHash = (stats.duplicateByContentHash || 0) + ingestionResult.duplicateBreakdown.duplicateByContentHash;
+            stats.duplicateByNormalizedIdentity = (stats.duplicateByNormalizedIdentity || 0) + ingestionResult.duplicateBreakdown.duplicateByNormalizedIdentity;
+          }
+
           newJobs.push(...ingestionResult.jobs);
 
           await createAuditLog({
@@ -367,6 +383,13 @@ export class JobPollingWorker {
       // 3. Match against Registered Candidates & Policy Evaluation
       const candidates = await listCandidates();
       const activeCandidates = candidates.filter((c) => c.isActive && c.consentStatus === "GRANTED");
+
+      // Prioritize authoritative profile
+      activeCandidates.sort((a, b) => {
+        if (a.id === "c1000000-0000-0000-0000-000000000001") return -1;
+        if (b.id === "c1000000-0000-0000-0000-000000000001") return 1;
+        return 0;
+      });
 
       const jobsToEvaluate =
         newJobs.length > 0
