@@ -225,11 +225,20 @@ export async function syncDefaultActiveSources(): Promise<void> {
         s.baseUrl?.toLowerCase().includes("adzuna")) &&
       !s.baseUrl?.includes("example");
 
-    if (isReal && (!s.isActive || s.healthStatus !== JobSourceHealthStatus.HEALTHY)) {
-      await updateJobSource(s.id, {
-        isActive: true,
-        healthStatus: JobSourceHealthStatus.HEALTHY,
-      });
+    if (isReal) {
+      if (!s.isActive || s.healthStatus !== JobSourceHealthStatus.HEALTHY) {
+        await updateJobSource(s.id, {
+          isActive: true,
+          healthStatus: JobSourceHealthStatus.HEALTHY,
+        });
+      }
+    } else {
+      if (s.isActive || s.healthStatus !== JobSourceHealthStatus.DISABLED) {
+        await updateJobSource(s.id, {
+          isActive: false,
+          healthStatus: JobSourceHealthStatus.DISABLED,
+        });
+      }
     }
   }
 }

@@ -397,9 +397,10 @@ export class RuleBasedAIProvider implements AIProvider {
     const candidateEmail = "tareknayera24@gmail.com";
     const candidateLocation = "Roxy, Heliopolis, Cairo, Egypt";
     const companyName = jobDetails.company?.name || jobDetails.companyName || "Hiring Team";
+    const companySlug = (jobDetails.company?.domain || companyName.toLowerCase().replace(/[^a-z0-9]/g, "") || "company");
     const jobTitle = jobDetails.title || "Target Position";
     const recipientName = recipientInfo?.name || `Hiring Team at ${companyName}`;
-    const recipientEmail = recipientInfo?.email || "recruitment@example.com";
+    const recipientEmail = recipientInfo?.email || (companySlug.includes(".") ? `careers@${companySlug}` : `careers@${companySlug}.com`);
 
     const categories = classifyJobCategories(jobDetails.title, jobDetails.description);
     const isLegal = isLegalRelated(categories);
@@ -671,10 +672,11 @@ Email: ${recipientInfo?.email || "recruitment@example.com"}`;
       if (!text) throw new Error("Empty Gemini email response");
 
       const parsed = JSON.parse(text);
+      const fallbackEmail = recipientInfo?.email || "careers@company.com";
       return {
         subject: parsed.subject,
         body: parsed.body,
-        recipientEmail: recipientInfo?.email || "recruitment@example.com",
+        recipientEmail: fallbackEmail,
         recipientName: recipientInfo?.name || "Hiring Manager",
         keyHighlights: parsed.keyHighlights || [],
         citationReferences: parsed.citationReferences || [],

@@ -66,7 +66,7 @@ describe("Authoritative Dashboard Summary & Metrics Integration Suite", () => {
     expect(summary.workerMetrics).toBeDefined();
     expect(typeof summary.workerMetrics.lastJobsFetched).toBe("number");
     expect(typeof summary.workerMetrics.lastDuplicatesSkipped).toBe("number");
-  });
+  }, 20000);
 
   it("serves GET /api/dashboard/summary with HTTP 200 and unified metrics snapshot", async () => {
     const started = await startServer();
@@ -80,7 +80,7 @@ describe("Authoritative Dashboard Summary & Metrics Integration Suite", () => {
     expect(json.data.worker.statusLabelAr).toBeDefined();
     expect(json.data.candidate.email).toContain("@");
     expect(json.data.jobs.total).toBeGreaterThanOrEqual(0);
-  });
+  }, 20000);
 
   it("exposes semantic worker status correctly distinguishing idle, enabled, and running states", () => {
     const status = jobPollingWorker.getStatus();

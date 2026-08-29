@@ -75,9 +75,10 @@ export async function generateApplicationEmail(
     companyName: job.company?.name || "Hiring Team",
   };
 
+  const companySlug = job.company?.domain || (job.company?.normalizedName?.replace(/[^a-z0-9]/g, "") || "company");
   const defaultRecipientEmail =
     input.recipientEmail ||
-    (job.company?.domain ? `careers@${job.company.domain}` : `recruitment@example.com`);
+    (companySlug.includes(".") ? `careers@${companySlug}` : `careers@${companySlug}.com`);
   const defaultRecipientName = input.recipientName || `${job.company?.name || "Hiring"} Team`;
 
   const ai = getAIProvider();
